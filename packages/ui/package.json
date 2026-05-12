@@ -1,0 +1,37 @@
+{
+    "name": "@crm-base/ui",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./styles.css": "./src/styles.css"
+    },
+    "scripts": {
+        "build": "tsc -p tsconfig.json",
+        "dev": "tsc -p tsconfig.json --watch",
+        "lint": "eslint src --ext .ts,.tsx",
+        "test": "echo \"No tests yet for ui\"",
+        "typecheck": "tsc -p tsconfig.json --noEmit"
+    },
+    "dependencies": {
+        "@radix-ui/react-slot": "^1.1.1",
+        "class-variance-authority": "^0.7.1",
+        "clsx": "^2.1.1",
+        "lucide-react": "^0.468.0",
+        "tailwind-merge": "^2.6.0"
+    },
+    "devDependencies": {
+        "@crm-base/config": "workspace:*",
+        "@types/react": "^18.3.18",
+        "typescript": "^5.7.2"
+    },
+    "peerDependencies": {
+        "react": ">=18"
+    }
+}
