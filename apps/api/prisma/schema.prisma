@@ -1,0 +1,832 @@
+// =============================================================================
+// CRM Base — Prisma Schema
+// =============================================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector")]
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+enum Plan {
+  STARTER
+  GROWTH
+  ENTERPRISE
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  SELLER
+  SUPPORT
+  VIEWER
+}
+
+enum ContactType {
+  LEAD
+  CUSTOMER
+  PARTNER
+}
+
+enum ContactSource {
+  WHATSAPP
+  INSTAGRAM
+  FACEBOOK
+  EMAIL
+  MANUAL
+  IMPORT
+  LANDING_PAGE
+  ADS
+}
+
+enum ActivityType {
+  NOTE
+  CALL
+  EMAIL
+  MEETING
+  TASK
+  WHATSAPP
+  SYSTEM
+}
+
+enum ConversationChannel {
+  WHATSAPP
+  WHATSAPP_OFFICIAL
+  INSTAGRAM
+  FACEBOOK
+  EMAIL
+  INTERNAL
+}
+
+enum ConversationStatus {
+  OPEN
+  PENDING
+  BOT
+  RESOLVED
+  SPAM
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  AUDIO
+  VIDEO
+  DOCUMENT
+  STICKER
+  LOCATION
+  TEMPLATE
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum PaymentGateway {
+  MERCADOPAGO
+  STRIPE
+  PAYPAL
+  INFINITYPAY
+  STONE
+  PAGSEGURO
+  ASAAS
+}
+
+enum PaymentType {
+  SINGLE
+  RECURRING
+  SUBSCRIPTION
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+enum AutomationLogStatus {
+  SUCCESS
+  FAILED
+  SKIPPED
+}
+
+enum KnowledgeBaseType {
+  DOCUMENT
+  WEBSITE
+  FAQ
+  PRODUCT
+  OBJECTION
+  APPROACH
+}
+
+enum KnowledgeDocumentSourceType {
+  PDF
+  WEBSITE
+  TEXT
+  NOTION
+  DRIVE
+}
+
+enum KnowledgeDocumentStatus {
+  PENDING
+  INDEXING
+  INDEXED
+  FAILED
+}
+
+enum AIAgentType {
+  SALES
+  SUPPORT
+  SCHEDULER
+  CUSTOM
+}
+
+enum AIAgentStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+}
+
+enum AIProvider {
+  GOOGLE
+  ANTHROPIC
+  OPENAI
+  OLLAMA
+}
+
+enum AIAgentSessionStatus {
+  ACTIVE
+  HANDOFF
+  ENDED
+}
+
+enum AIInsightType {
+  OBJECTION
+  BEST_APPROACH
+  PRODUCT_FEEDBACK
+  SENTIMENT
+  SUMMARY
+  COACHING
+}
+
+enum AITrainingDataType {
+  OBJECTION_RESPONSE
+  SALES_APPROACH
+  PRODUCT_INFO
+  FAQ
+}
+
+// =============================================================================
+// ORGANIZATION
+// =============================================================================
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  plan      Plan     @default(STARTER)
+  settings  Json     @default("{}")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users         User[]
+  contacts      Contact[]
+  deals         Deal[]
+  conversations Conversation[]
+  departments   Department[]
+  pipelines     Pipeline[]
+  companies     Company[]
+  payments      Payment[]
+  webhooks      Webhook[]
+  automations   Automation[]
+  timeline      TimelineEvent[]
+  auditLogs     AuditLog[]
+  knowledgeBases KnowledgeBase[]
+  aiAgents      AIAgent[]
+  aiInsights    AIInsight[]
+  aiTrainingData AITrainingData[]
+  messageTemplates MessageTemplate[]
+
+  @@map("organizations")
+}
+
+// =============================================================================
+// DEPARTMENT
+// =============================================================================
+
+model Department {
+  id          String  @id @default(cuid())
+  name        String
+  description String?
+  orgId       String
+
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  users User[]
+
+  @@index([orgId])
+  @@map("departments")
+}
+
+// =============================================================================
+// USER
+// =============================================================================
+
+model User {
+  id          String   @id @default(cuid())
+  firebaseUid String   @unique
+  email       String
+  name        String
+  avatar      String?
+  role        UserRole @default(SELLER)
+  orgId       String
+  departmentId String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  org          Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  department   Department?   @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  deals        Deal[]        @relation("DealOwner")
+  conversations Conversation[] @relation("ConversationAgent")
+  activities   Activity[]
+  messages     Message[]
+  timelineEvents TimelineEvent[]
+  auditLogs    AuditLog[]
+
+  @@index([orgId])
+  @@index([email])
+  @@map("users")
+}
+
+// =============================================================================
+// CONTACT
+// =============================================================================
+
+model Contact {
+  id           String        @id @default(cuid())
+  name         String
+  email        String?
+  phone        String?
+  document     String?
+  avatar       String?
+  type         ContactType   @default(LEAD)
+  source       ContactSource @default(MANUAL)
+  utmSource    String?
+  utmMedium    String?
+  utmCampaign  String?
+  utmContent   String?
+  utmTerm      String?
+  adId         String?
+  adsetId      String?
+  campaignId   String?
+  pixelSessionId String?
+  tags         String[]
+  customFields Json          @default("{}")
+  orgId        String
+  companyId    String?
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  org           Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  company       Company?       @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  deals         Deal[]
+  conversations Conversation[]
+  timeline      TimelineEvent[]
+  activities    Activity[]
+  payments      Payment[]
+  automationLogs AutomationLog[]
+
+  @@index([orgId])
+  @@index([email])
+  @@index([phone])
+  @@index([source])
+  @@map("contacts")
+}
+
+// =============================================================================
+// COMPANY (B2B)
+// =============================================================================
+
+model Company {
+  id       String  @id @default(cuid())
+  name     String
+  document String?
+  website  String?
+  segment  String?
+  size     String?
+  orgId    String
+
+  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  contacts Contact[]
+
+  @@index([orgId])
+  @@map("companies")
+}
+
+// =============================================================================
+// PIPELINE
+// =============================================================================
+
+model Pipeline {
+  id        String  @id @default(cuid())
+  name      String
+  isDefault Boolean @default(false)
+  orgId     String
+
+  org    Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  stages PipelineStage[]
+  deals  Deal[]
+
+  @@index([orgId])
+  @@map("pipelines")
+}
+
+model PipelineStage {
+  id          String  @id @default(cuid())
+  name        String
+  order       Int
+  color       String  @default("#6366f1")
+  probability Int     @default(0)
+  isWon       Boolean @default(false)
+  isLost      Boolean @default(false)
+  pipelineId  String
+
+  pipeline Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  deals    Deal[]
+
+  @@index([pipelineId])
+  @@map("pipeline_stages")
+}
+
+// =============================================================================
+// DEAL
+// =============================================================================
+
+model Deal {
+  id              String    @id @default(cuid())
+  title           String
+  value           Decimal?  @db.Decimal(15, 2)
+  currency        String    @default("BRL")
+  stageId         String
+  pipelineId      String
+  contactId       String
+  ownerId         String
+  orgId           String
+  probability     Int       @default(0)
+  expectedCloseAt DateTime?
+  closedAt        DateTime?
+  closedReason    String?
+  customFields    Json      @default("{}")
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  stage      PipelineStage @relation(fields: [stageId], references: [id])
+  pipeline   Pipeline      @relation(fields: [pipelineId], references: [id])
+  contact    Contact       @relation(fields: [contactId], references: [id])
+  owner      User          @relation("DealOwner", fields: [ownerId], references: [id])
+  org        Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  activities Activity[]
+  payments   Payment[]
+  automationLogs AutomationLog[]
+
+  @@index([orgId])
+  @@index([contactId])
+  @@index([ownerId])
+  @@index([stageId])
+  @@map("deals")
+}
+
+// =============================================================================
+// ACTIVITY
+// =============================================================================
+
+model Activity {
+  id          String       @id @default(cuid())
+  type        ActivityType
+  title       String
+  description String?
+  dueAt       DateTime?
+  completedAt DateTime?
+  dealId      String?
+  contactId   String?
+  userId      String
+  orgId       String
+
+  deal    Deal?    @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  contact Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  user    User     @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([orgId])
+  @@index([dealId])
+  @@index([contactId])
+  @@index([userId])
+  @@map("activities")
+}
+
+// =============================================================================
+// CONVERSATION
+// =============================================================================
+
+model Conversation {
+  id            String              @id @default(cuid())
+  channel       ConversationChannel
+  status        ConversationStatus  @default(OPEN)
+  contactId     String
+  orgId         String
+  agentId       String?
+  externalId    String?
+  unreadCount   Int                 @default(0)
+  lastMessageAt DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  contact  Contact      @relation(fields: [contactId], references: [id])
+  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  agent    User?        @relation("ConversationAgent", fields: [agentId], references: [id], onDelete: SetNull)
+  messages Message[]
+  aiSessions AIAgentSession[]
+
+  @@unique([externalId, channel, orgId])
+  @@index([orgId])
+  @@index([contactId])
+  @@index([status])
+  @@map("conversations")
+}
+
+// =============================================================================
+// MESSAGE
+// =============================================================================
+
+model Message {
+  id             String           @id @default(cuid())
+  content        String           @db.Text
+  type           MessageType      @default(TEXT)
+  direction      MessageDirection
+  status         MessageStatus    @default(SENT)
+  externalId     String?
+  mediaUrl       String?
+  mediaType      String?
+  mediaSize      Int?
+  conversationId String
+  senderId       String?
+  sentAt         DateTime         @default(now())
+  deliveredAt    DateTime?
+  readAt         DateTime?
+  metadata       Json             @default("{}")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User?        @relation(fields: [senderId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId])
+  @@index([externalId])
+  @@map("messages")
+}
+
+// =============================================================================
+// MESSAGE TEMPLATE
+// =============================================================================
+
+model MessageTemplate {
+  id       String @id @default(cuid())
+  name     String
+  category String
+  language String @default("pt_BR")
+  status   String @default("PENDING")
+  header   Json?
+  body     String @db.Text
+  footer   String?
+  buttons  Json?
+  orgId    String
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("message_templates")
+}
+
+// =============================================================================
+// PAYMENT
+// =============================================================================
+
+model Payment {
+  id          String         @id @default(cuid())
+  externalId  String?
+  gateway     PaymentGateway
+  type        PaymentType    @default(SINGLE)
+  status      PaymentStatus  @default(PENDING)
+  amount      Decimal        @db.Decimal(15, 2)
+  currency    String         @default("BRL")
+  description String?
+  contactId   String?
+  dealId      String?
+  orgId       String
+  paidAt      DateTime?
+  dueAt       DateTime?
+  expiresAt   DateTime?
+  metadata    Json           @default("{}")
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  contact Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  deal    Deal?        @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([externalId])
+  @@index([status])
+  @@map("payments")
+}
+
+// =============================================================================
+// WEBHOOK
+// =============================================================================
+
+model Webhook {
+  id          String    @id @default(cuid())
+  gateway     String
+  event       String
+  payload     Json
+  status      String    @default("PENDING")
+  attempts    Int       @default(0)
+  processedAt DateTime?
+  orgId       String?
+  createdAt   DateTime  @default(now())
+
+  org Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull)
+
+  @@index([orgId])
+  @@index([gateway])
+  @@index([status])
+  @@map("webhooks")
+}
+
+// =============================================================================
+// AUTOMATION
+// =============================================================================
+
+model Automation {
+  id          String  @id @default(cuid())
+  name        String
+  description String?
+  isActive    Boolean @default(true)
+  trigger     Json
+  conditions  Json    @default("[]")
+  actions     Json    @default("[]")
+  orgId       String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org  Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  logs AutomationLog[]
+
+  @@index([orgId])
+  @@map("automations")
+}
+
+model AutomationLog {
+  id               String              @id @default(cuid())
+  automationId     String
+  contactId        String?
+  dealId           String?
+  status           AutomationLogStatus
+  executedActions  Json                @default("[]")
+  error            String?
+  createdAt        DateTime            @default(now())
+
+  automation Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  contact    Contact?   @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  deal       Deal?      @relation(fields: [dealId], references: [id], onDelete: SetNull)
+
+  @@index([automationId])
+  @@index([contactId])
+  @@map("automation_logs")
+}
+
+// =============================================================================
+// TIMELINE
+// =============================================================================
+
+model TimelineEvent {
+  id          String   @id @default(cuid())
+  type        String
+  title       String
+  description String?
+  metadata    Json     @default("{}")
+  contactId   String
+  userId      String?
+  orgId       String
+  createdAt   DateTime @default(now())
+
+  contact Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  user    User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([contactId])
+  @@index([orgId])
+  @@map("timeline_events")
+}
+
+// =============================================================================
+// AUDIT LOG
+// =============================================================================
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  action     String
+  resource   String
+  resourceId String
+  oldData    Json?
+  newData    Json?
+  userId     String?
+  orgId      String?
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  user User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  org  Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull)
+
+  @@index([orgId])
+  @@index([userId])
+  @@index([resource, resourceId])
+  @@map("audit_logs")
+}
+
+// =============================================================================
+// KNOWLEDGE BASE
+// =============================================================================
+
+model KnowledgeBase {
+  id          String            @id @default(cuid())
+  name        String
+  description String?
+  type        KnowledgeBaseType
+  orgId       String
+  isActive    Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  org       Organization        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  documents KnowledgeDocument[]
+
+  @@index([orgId])
+  @@map("knowledge_bases")
+}
+
+model KnowledgeDocument {
+  id             String                       @id @default(cuid())
+  title          String
+  content        String                       @db.Text
+  sourceUrl      String?
+  sourceType     KnowledgeDocumentSourceType
+  status         KnowledgeDocumentStatus      @default(PENDING)
+  chunkCount     Int                          @default(0)
+  metadata       Json                         @default("{}")
+  knowledgeBaseId String
+  orgId          String
+  createdAt      DateTime                     @default(now())
+  updatedAt      DateTime                     @updatedAt
+
+  knowledgeBase KnowledgeBase    @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  chunks        KnowledgeChunk[]
+
+  @@index([knowledgeBaseId])
+  @@index([orgId])
+  @@map("knowledge_documents")
+}
+
+model KnowledgeChunk {
+  id              String                  @id @default(cuid())
+  content         String                  @db.Text
+  chunkIndex      Int
+  embeddingVector Unsupported("vector(1536)")?
+  metadata        Json                    @default("{}")
+  documentId      String
+  orgId           String
+  createdAt       DateTime                @default(now())
+
+  document KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([orgId])
+  @@map("knowledge_chunks")
+}
+
+// =============================================================================
+// AI AGENT
+// =============================================================================
+
+model AIAgent {
+  id             String        @id @default(cuid())
+  name           String
+  description    String?
+  avatar         String?
+  type           AIAgentType
+  status         AIAgentStatus @default(DRAFT)
+  provider       AIProvider    @default(OPENAI)
+  model          String?
+  systemPrompt   String        @db.Text
+  temperature    Float         @default(0.3)
+  maxTokens      Int           @default(2048)
+  knowledgeBaseIds String[]
+  tools          Json          @default("{}")
+  handoffRules   Json          @default("{}")
+  orgId          String
+  isActive       Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  org      Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  sessions AIAgentSession[]
+
+  @@index([orgId])
+  @@map("ai_agents")
+}
+
+model AIAgentSession {
+  id              String               @id @default(cuid())
+  agentId         String
+  conversationId  String
+  orgId           String
+  status          AIAgentSessionStatus @default(ACTIVE)
+  messagesHandled Int                  @default(0)
+  handoffReason   String?
+  startedAt       DateTime             @default(now())
+  endedAt         DateTime?
+
+  agent        AIAgent      @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@index([conversationId])
+  @@index([orgId])
+  @@map("ai_agent_sessions")
+}
+
+// =============================================================================
+// AI INSIGHT
+// =============================================================================
+
+model AIInsight {
+  id                     String        @id @default(cuid())
+  type                   AIInsightType
+  title                  String
+  content                String        @db.Text
+  confidence             Float
+  sourceConversationIds  String[]
+  metadata               Json          @default("{}")
+  orgId                  String
+  createdAt              DateTime      @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([type])
+  @@map("ai_insights")
+}
+
+// =============================================================================
+// AI TRAINING DATA
+// =============================================================================
+
+model AITrainingData {
+  id          String             @id @default(cuid())
+  type        AITrainingDataType
+  input       String             @db.Text
+  output      String             @db.Text
+  isValidated Boolean            @default(false)
+  validatedBy String?
+  orgId       String
+  createdAt   DateTime           @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([type])
+  @@map("ai_training_data")
+}
