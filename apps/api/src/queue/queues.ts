@@ -1,7 +1,7 @@
 import { Queue } from "bullmq";
 import { closeRedis, getRedis } from "../lib/redis.js";
 
-type QueueName = "email" | "automations" | "reports" | "knowledge" | "ai" | "inbox";
+type QueueName = "email" | "automations" | "reports" | "knowledge" | "ai" | "inbox" | "learning";
 
 const queueRegistry = new Map<QueueName, Queue>();
 
@@ -25,6 +25,7 @@ export const queues = {
     knowledge: () => getQueue("knowledge"),
     ai: () => getQueue("ai"),
     inbox: () => getQueue("inbox"),
+    learning: () => getQueue("learning"),
 };
 
 export async function closeQueues() {

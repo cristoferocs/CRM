@@ -154,17 +154,32 @@ enum KnowledgeDocumentStatus {
   FAILED
 }
 
-enum AIAgentType {
+enum AgentType {
   SALES
   SUPPORT
   SCHEDULER
+  QUALIFICATION
+  COLLECTIONS
+  ONBOARDING
   CUSTOM
 }
 
-enum AIAgentStatus {
+enum AgentStatus {
   DRAFT
+  LEARNING
+  REVIEW
+  READY
   ACTIVE
   PAUSED
+  RETIRED
+}
+
+enum AgentPhase {
+  SETUP
+  OBSERVATION
+  LEARNING
+  VALIDATION
+  PRODUCTION
 }
 
 enum AIProvider {
@@ -174,8 +189,10 @@ enum AIProvider {
   OLLAMA
 }
 
-enum AIAgentSessionStatus {
+enum SessionStatus {
   ACTIVE
+  THINKING
+  WAITING_USER
   HANDOFF
   ENDED
 }
@@ -228,6 +245,7 @@ model Organization {
   aiAgents         AIAgent[]
   aiInsights       AIInsight[]
   aiTrainingData   AITrainingData[]
+  agentLearningJobs AgentLearningJob[]
   messageTemplates MessageTemplate[]
   branches         Branch[]
   whiteLabelDomain WhiteLabelDomain?
@@ -805,54 +823,157 @@ model KnowledgeChunk {
 }
 
 // =============================================================================
-// AI AGENT
+// AI AGENT (Super Agent)
 // =============================================================================
 
 model AIAgent {
-  id             String        @id @default(cuid())
-  name           String
-  description    String?
-  avatar         String?
-  type           AIAgentType
-  status         AIAgentStatus @default(DRAFT)
-  provider       AIProvider    @default(OPENAI)
-  model          String?
-  systemPrompt   String        @db.Text
-  temperature    Float         @default(0.3)
-  maxTokens      Int           @default(2048)
-  knowledgeBaseIds String[]
-  tools          Json          @default("{}")
-  handoffRules   Json          @default("{}")
-  orgId          String
-  isActive       Boolean       @default(true)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  id          String      @id @default(cuid())
+  name        String
+  description String?
+  avatar      String?
+  type        AgentType
+  status      AgentStatus @default(DRAFT)
+  phase       AgentPhase  @default(SETUP)
 
-  org      Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  sessions AIAgentSession[]
+  // Provedor de IA
+  provider AIProvider?
+  model    String?
+
+  // Configuração do super agente
+  systemPrompt    String  @db.Text
+  personality     Json    @default("{}")
+  goal            String  @db.Text
+  successCriteria Json    @default("{}")
+
+  // Planejamento e fluxo
+  flowTemplate  Json?
+  decisionRules Json?
+  requiredDataPoints Json @default("[]")
+
+  // Configuração de comportamento
+  maxTurnsBeforeHuman Int   @default(20)
+  confidenceThreshold Float @default(0.75)
+  temperature         Float @default(0.4)
+  maxTokens           Int   @default(2048)
+
+  // Ferramentas e conhecimento
+  knowledgeBaseIds String[]
+  enabledTools     Json @default("{}")
+  handoffRules     Json @default("{}")
+
+  // Aprendizado
+  learningConfig        Json     @default("{}")
+  learningCompletedAt   DateTime?
+  learnedFromCount      Int      @default(0)
+  minimumLearningSample Int      @default(30)
+
+  orgId     String
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org          Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  sessions     AIAgentSession[]
+  flowVersions AgentFlowVersion[]
+  learningJobs AgentLearningJob[]
 
   @@index([orgId])
   @@map("ai_agents")
 }
 
 model AIAgentSession {
-  id              String               @id @default(cuid())
-  agentId         String
-  conversationId  String
-  orgId           String
-  status          AIAgentSessionStatus @default(ACTIVE)
-  messagesHandled Int                  @default(0)
-  handoffReason   String?
-  startedAt       DateTime             @default(now())
-  endedAt         DateTime?
+  id             String        @id @default(cuid())
+  agentId        String
+  conversationId String
+  orgId          String
+
+  // Estado da conversa
+  intent           String?
+  intentConfidence Float?
+  currentStep      String?
+  collectedData    Json    @default("{}")
+  pendingQuestions Json    @default("[]")
+  planSteps        Json    @default("[]")
+  completedSteps   Json    @default("[]")
+
+  // Controle
+  status        SessionStatus @default(ACTIVE)
+  turnCount     Int           @default(0)
+  handoffReason String?
+  handoffData   Json?
+
+  // Resultado
+  outcome      String?
+  goalAchieved Boolean?
+
+  startedAt      DateTime @default(now())
+  lastActivityAt DateTime @default(now())
+  endedAt        DateTime?
 
   agent        AIAgent      @relation(fields: [agentId], references: [id], onDelete: Cascade)
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  turns        AIAgentTurn[]
 
-  @@index([agentId])
+  @@index([agentId, status])
   @@index([conversationId])
   @@index([orgId])
   @@map("ai_agent_sessions")
+}
+
+model AIAgentTurn {
+  id         String   @id @default(cuid())
+  sessionId  String
+  role       String   // user | assistant | tool
+  content    String   @db.Text
+  toolName   String?
+  toolParams Json?
+  toolResult String?  @db.Text
+  tokensUsed Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  session AIAgentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@map("ai_agent_turns")
+}
+
+model AgentFlowVersion {
+  id           String    @id @default(cuid())
+  agentId      String
+  version      Int
+  flowTemplate Json
+  notes        String?
+  approvedBy   String?
+  approvedAt   DateTime?
+  isActive     Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+
+  agent AIAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, version])
+  @@index([agentId])
+  @@map("agent_flow_versions")
+}
+
+model AgentLearningJob {
+  id              String    @id @default(cuid())
+  agentId         String
+  orgId           String
+  status          String    @default("PENDING")
+  conversationIds String[]
+  analyzedCount   Int       @default(0)
+  result          Json?
+  error           String?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+
+  agent AIAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@index([orgId])
+  @@map("agent_learning_jobs")
 }
 
 // =============================================================================
