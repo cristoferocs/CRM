@@ -48,4 +48,4 @@ override.tf.json
 # Docker and local data
 docker-compose.override.yml
 tmp/
-temp/
+temp/nul
