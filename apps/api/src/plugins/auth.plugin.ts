@@ -9,8 +9,10 @@ type PermissionAction = "create" | "read" | "update" | "delete" | "manage" | str
 interface AuthenticatedUser {
     id?: string;
     email?: string;
-    permissions?: string[];
+    orgId?: string;
     role?: string;
+    type?: string;
+    permissions?: string[];
 }
 
 declare module "fastify" {

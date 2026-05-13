@@ -27,6 +27,7 @@ enum UserRole {
   SUPER_ADMIN
   ADMIN
   MANAGER
+  BRANCH_MANAGER
   SELLER
   SUPPORT
   VIEWER
@@ -226,8 +227,38 @@ model Organization {
   aiInsights    AIInsight[]
   aiTrainingData AITrainingData[]
   messageTemplates MessageTemplate[]
+  branches      Branch[]
 
   @@map("organizations")
+}
+
+// =============================================================================
+// BRANCH (multi-filial placeholder)
+// =============================================================================
+
+model Branch {
+  id              String   @id @default(cuid())
+  name            String
+  code            String?              // código da filial (ex: "SP-01", "RJ-02")
+  address         String?
+  phone           String?
+  email           String?
+  isActive        Boolean  @default(true)
+  isHeadquarter   Boolean  @default(false)  // true = matriz
+  settings        Json?                // configurações específicas da filial
+  orgId           String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  org           Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  users         User[]
+  contacts      Contact[]
+  deals         Deal[]
+  conversations Conversation[]
+
+  @@index([orgId])
+  @@unique([orgId, code])
+  @@map("branches")
 }
 
 // =============================================================================
@@ -264,8 +295,11 @@ model User {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  branchId     String?
+
   org          Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
   department   Department?   @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  branch       Branch?       @relation(fields: [branchId], references: [id], onDelete: SetNull)
   deals        Deal[]        @relation("DealOwner")
   conversations Conversation[] @relation("ConversationAgent")
   activities   Activity[]
@@ -304,12 +338,14 @@ model Contact {
   customFields Json          @default("{}")
   orgId        String
   companyId    String?
+  branchId     String?
   isActive     Boolean       @default(true)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
   org           Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
   company       Company?       @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  branch        Branch?        @relation(fields: [branchId], references: [id], onDelete: SetNull)
   deals         Deal[]
   conversations Conversation[]
   timeline      TimelineEvent[]
@@ -393,6 +429,7 @@ model Deal {
   contactId       String
   ownerId         String
   orgId           String
+  branchId        String?
   probability     Int       @default(0)
   expectedCloseAt DateTime?
   closedAt        DateTime?
@@ -407,6 +444,7 @@ model Deal {
   contact    Contact       @relation(fields: [contactId], references: [id])
   owner      User          @relation("DealOwner", fields: [ownerId], references: [id])
   org        Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  branch     Branch?       @relation(fields: [branchId], references: [id], onDelete: SetNull)
   activities Activity[]
   payments   Payment[]
   automationLogs AutomationLog[]
@@ -464,10 +502,13 @@ model Conversation {
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
 
-  contact  Contact      @relation(fields: [contactId], references: [id])
-  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  agent    User?        @relation("ConversationAgent", fields: [agentId], references: [id], onDelete: SetNull)
-  messages Message[]
+  branchId      String?
+
+  contact    Contact      @relation(fields: [contactId], references: [id])
+  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  agent      User?        @relation("ConversationAgent", fields: [agentId], references: [id], onDelete: SetNull)
+  branch     Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  messages   Message[]
   aiSessions AIAgentSession[]
 
   @@unique([externalId, channel, orgId])

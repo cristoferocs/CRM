@@ -1,19 +1,90 @@
 import type { FastifyPluginAsync } from "fastify";
 import { AuthService } from "./module.service.js";
-import { authHealthResponseSchema } from "./module.schema.js";
+import {
+    LoginSchema,
+    LoginResponseSchema,
+    MeResponseSchema,
+    RefreshSchema,
+    RefreshResponseSchema,
+    type LoginInput,
+    type RefreshInput,
+} from "./module.schema.js";
 
 export const authRoutes: FastifyPluginAsync = async (fastify) => {
-    const authService = new AuthService();
+    const service = new AuthService();
 
-    fastify.get(
-        "/health",
+    // POST /auth/login
+    fastify.post(
+        "/login",
         {
             schema: {
-                response: {
-                    200: authHealthResponseSchema
-                }
-            }
+                body: LoginSchema,
+                response: { 200: LoginResponseSchema },
+            },
         },
-        async () => authService.health()
+        async (request, reply) => {
+            const { firebaseToken } = request.body as LoginInput;
+
+            const decoded = await service.verifyFirebaseToken(firebaseToken);
+            const user = await service.loginOrRegister(decoded.uid, decoded.email ?? "");
+
+            const accessToken = fastify.jwt.sign(
+                { id: user.id, orgId: user.orgId, role: user.role, email: user.email },
+                { expiresIn: "1h" },
+            );
+            const refreshToken = fastify.jwt.sign(
+                { id: user.id, type: "refresh" },
+                { expiresIn: "7d" },
+            );
+
+            return reply.send({ accessToken, refreshToken, user });
+        },
+    );
+
+    // GET /auth/me
+    fastify.get(
+        "/me",
+        {
+            onRequest: [fastify.verifyJWT],
+            schema: {
+                response: { 200: MeResponseSchema },
+            },
+        },
+        async (request) => {
+            return service.me(request.user.id!);
+        },
+    );
+
+    // POST /auth/refresh
+    fastify.post(
+        "/refresh",
+        {
+            schema: {
+                body: RefreshSchema,
+                response: { 200: RefreshResponseSchema },
+            },
+        },
+        async (request, reply) => {
+            const { refreshToken } = request.body as RefreshInput;
+
+            let payload: { id: string; type?: string };
+            try {
+                payload = fastify.jwt.verify<{ id: string; type?: string }>(refreshToken);
+            } catch {
+                throw Object.assign(new Error("Invalid or expired refresh token"), { statusCode: 401 });
+            }
+
+            if (payload.type !== "refresh") {
+                throw Object.assign(new Error("Not a refresh token"), { statusCode: 401 });
+            }
+
+            const user = await service.me(payload.id);
+            const accessToken = fastify.jwt.sign(
+                { id: user.id, orgId: user.orgId, role: user.role, email: user.email },
+                { expiresIn: "1h" },
+            );
+
+            return reply.send({ accessToken });
+        },
     );
 };
