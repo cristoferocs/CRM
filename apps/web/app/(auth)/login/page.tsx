@@ -70,8 +70,8 @@ export default function LoginPage() {
         try {
             await loginWithEmail.mutateAsync(data);
             router.replace("/");
-        } catch (err: any) {
-            setError(err?.message ?? "Erro ao fazer login");
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : "Erro ao fazer login");
         }
     };
 
@@ -80,8 +80,8 @@ export default function LoginPage() {
         try {
             await loginWithGoogle.mutateAsync();
             router.replace("/");
-        } catch (err: any) {
-            setError(err?.message ?? "Erro ao fazer login com Google");
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : "Erro ao fazer login com Google");
         }
     };
 
@@ -136,8 +136,29 @@ export default function LoginPage() {
                 )}
 
                 {isDevMode && (
-                    <div className="mb-5 rounded-[10px] border border-amber/30 bg-amber/[0.06] px-3 py-2 text-[11px] text-amber">
-                        Modo de desenvolvimento: use o e-mail e senha do administrador padrão.
+                    <div className="mb-4 space-y-2">
+                        <div className="rounded-[10px] border border-amber/30 bg-amber/[0.06] px-3 py-2 text-[11px] text-amber">
+                            Modo desenvolvimento — use as credenciais do administrador padrão.
+                        </div>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className="w-full gap-2 border-amber/30 text-amber hover:bg-amber/[0.06]"
+                            onClick={async () => {
+                                const email = process.env.NEXT_PUBLIC_DEV_ADMIN_EMAIL ?? "";
+                                const password = process.env.NEXT_PUBLIC_DEV_ADMIN_PASSWORD ?? "";
+                                setError(null);
+                                try {
+                                    await loginWithEmail.mutateAsync({ email, password });
+                                    router.replace("/");
+                                } catch (err: unknown) {
+                                    setError(err instanceof Error ? err.message : "Erro ao fazer login");
+                                }
+                            }}
+                            disabled={loginWithEmail.isPending}
+                        >
+                            {loginWithEmail.isPending ? <Spinner size="sm" /> : "⚡ Entrar como Super Admin"}
+                        </Button>
                     </div>
                 )}
 
