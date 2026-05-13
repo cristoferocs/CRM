@@ -1,5 +1,5 @@
 import { AgentRepository } from "./agent.repository.js";
-import { runSuperAgent } from "./agent.runner.js";
+import { superAgentRunner } from "./super-agent.runner.js";
 import { queues } from "../../../queue/queues.js";
 import { prisma } from "../../../lib/prisma.js";
 import type {
@@ -65,7 +65,7 @@ export class AgentService {
             });
             contactId = conv?.contactId ?? "";
         }
-        return runSuperAgent({
+        return superAgentRunner.run({
             agentId,
             conversationId: input.conversationId,
             message: input.message,

@@ -64,8 +64,8 @@ async function loadConversationSummaries(
             conv.status === "RESOLVED"
                 ? "resolved"
                 : conv.status === "OPEN"
-                  ? "unresolved"
-                  : "handoff",
+                    ? "unresolved"
+                    : "handoff",
     }));
 }
 
