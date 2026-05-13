@@ -9,6 +9,7 @@ import {
     Users,
     DollarSign,
     Target,
+    Briefcase,
 } from "lucide-react";
 import {
     LineChart,
@@ -41,6 +42,11 @@ interface DashboardData {
         monthRevenueDelta: number;
         conversionRate: number;
         conversionRateDelta: number;
+    };
+    openOpportunities: {
+        count: number;
+        totalValue: number;
+        weightedProbability: number;
     };
     leadsByDay: { date: string; count: number }[];
     revenueByMonth: { month: string; value: number }[];
@@ -285,6 +291,62 @@ export default function DashboardPage() {
                     accent="amber"
                     icon={<Target className="h-5 w-5 text-amber" />}
                 />
+            </div>
+
+            {/* Open Opportunities Banner */}
+            <div className="rounded-[16px] border border-[var(--rim)] bg-surface overflow-hidden">
+                <div className="flex items-center gap-2 px-5 py-3.5 border-b border-[var(--rim)]">
+                    <Briefcase className="h-4 w-4 text-violet" />
+                    <span className="text-sm font-medium text-t1">Oportunidades em aberto</span>
+                    <Link href="/pipeline" className="ml-auto font-mono text-[11px] text-cyan hover:opacity-70">
+                        ver pipeline →
+                    </Link>
+                </div>
+                <div className="grid grid-cols-3 divide-x divide-[var(--rim)]">
+                    {/* Count */}
+                    <div className="px-6 py-4">
+                        {isLoading ? (
+                            <Skeleton className="h-7 w-16 mb-1" />
+                        ) : (
+                            <p className="font-display text-[26px] font-semibold leading-none tracking-[-0.6px] text-t1">
+                                {data?.openOpportunities?.count ?? 0}
+                            </p>
+                        )}
+                        <p className="mt-1.5 text-xs text-t2">Deals em andamento</p>
+                    </div>
+                    {/* Total value */}
+                    <div className="px-6 py-4">
+                        {isLoading ? (
+                            <Skeleton className="h-7 w-28 mb-1" />
+                        ) : (
+                            <p className="font-display text-[26px] font-semibold leading-none tracking-[-0.6px] text-jade">
+                                {formatCurrency(data?.openOpportunities?.totalValue ?? 0, { compact: true })}
+                            </p>
+                        )}
+                        <p className="mt-1.5 text-xs text-t2">Volume total do pipeline</p>
+                    </div>
+                    {/* Weighted probability */}
+                    <div className="px-6 py-4">
+                        {isLoading ? (
+                            <Skeleton className="h-7 w-20 mb-1" />
+                        ) : (
+                            <>
+                                <div className="flex items-baseline gap-2">
+                                    <p className="font-display text-[26px] font-semibold leading-none tracking-[-0.6px] text-amber">
+                                        {data?.openOpportunities?.weightedProbability ?? 0}%
+                                    </p>
+                                </div>
+                                <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-3">
+                                    <div
+                                        className="h-full rounded-full bg-gradient-to-r from-amber to-jade transition-all duration-500"
+                                        style={{ width: `${data?.openOpportunities?.weightedProbability ?? 0}%` }}
+                                    />
+                                </div>
+                                <p className="mt-1.5 text-xs text-t2">Probabilidade média ponderada de fechamento</p>
+                            </>
+                        )}
+                    </div>
+                </div>
             </div>
 
             {/* Main grid */}

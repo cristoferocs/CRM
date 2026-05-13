@@ -94,6 +94,7 @@ export class ReportsRepository {
             recentConversations,
             closingDeals,
             recentActivities,
+            openDeals,
         ] = await Promise.all([
             prisma.contact.count({ where: { orgId, isActive: true, type: "LEAD", createdAt: { gte: currentStart } } }),
             prisma.contact.count({ where: { orgId, isActive: true, type: "LEAD", createdAt: { gte: previousStart, lt: previousEnd } } }),
@@ -150,6 +151,15 @@ export class ReportsRepository {
                     contact: { select: { name: true } },
                 },
             }),
+            prisma.deal.findMany({
+                where: {
+                    orgId,
+                    isActive: true,
+                    closedAt: null,
+                    stage: { isWon: false, isLost: false },
+                },
+                select: { value: true, probability: true },
+            }),
         ]);
 
         const leadsByDayCounts = new Map<string, number>();
@@ -173,6 +183,19 @@ export class ReportsRepository {
         const monthRevenue = Number(paidThisMonth._sum.amount ?? 0);
         const previousMonthRevenue = Number(paidPreviousMonth._sum.amount ?? 0);
         const conversionRate = totalContacts > 0 ? Math.round((customers / totalContacts) * 100) : 0;
+
+        const openDealsCount = openDeals.length;
+        const openTotalValue = openDeals.reduce((sum, d) => sum + Number(d.value ?? 0), 0);
+        const weightedSum = openDeals.reduce(
+            (sum, d) => sum + Number(d.value ?? 0) * (d.probability ?? 0),
+            0,
+        );
+        const weightedProbability =
+            openTotalValue > 0
+                ? Math.round(weightedSum / openTotalValue)
+                : openDealsCount > 0
+                    ? Math.round(openDeals.reduce((sum, d) => sum + (d.probability ?? 0), 0) / openDealsCount)
+                    : 0;
 
         return {
             kpis: {
@@ -203,6 +226,11 @@ export class ReportsRepository {
                 contact: deal.contact,
                 probability: deal.probability,
             })),
+            openOpportunities: {
+                count: openDealsCount,
+                totalValue: openTotalValue,
+                weightedProbability,
+            },
             recentActivities: recentActivities.map((activity) => ({
                 id: activity.id,
                 type: activity.type.toLowerCase(),
