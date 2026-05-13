@@ -1,6 +1,8 @@
 import { InboxRepository } from "./module.repository.js";
 import { getIO } from "../../websocket/socket.js";
 import { getEvolutionChannel } from "./channels/whatsapp-evolution.channel.js";
+import { queues } from "../../queue/queues.js";
+import { prisma } from "../../lib/prisma.js";
 import type {
     ConversationFilters,
     CreateConversationInput,
@@ -220,5 +222,46 @@ export class InboxService {
         }
         await this.repo.markAsRead(conversationId, orgId);
         return { ok: true };
+    }
+
+    // -------------------------------------------------------------------------
+    // AI Agent Integration
+    // -------------------------------------------------------------------------
+
+    /**
+     * Called whenever a new INBOUND message is received (webhook, socket, etc.).
+     * If an active AIAgent is configured for this org, enqueue the agent-respond job.
+     */
+    async handleInboundAI(conversationId: string, messageText: string, orgId: string) {
+        const conv = await this.repo.findConversation(conversationId, orgId);
+        if (!conv) return;
+
+        // Check for an active AI agent session (still running) or look for an ACTIVE agent
+        const existingSession = await prisma.aIAgentSession.findFirst({
+            where: { conversationId, status: "ACTIVE" },
+            select: { agentId: true },
+        });
+
+        let agentId: string | null = existingSession?.agentId ?? null;
+
+        // No active session — find an ACTIVE agent for this org matching the channel
+        if (!agentId) {
+            const agent = await prisma.aIAgent.findFirst({
+                where: { orgId, status: "ACTIVE" },
+                select: { id: true },
+            });
+            agentId = agent?.id ?? null;
+        }
+
+        if (!agentId) return; // no AI agent configured
+
+        await queues.ai().add("ai:agent-respond", {
+            type: "ai:agent-respond",
+            agentId,
+            conversationId,
+            message: messageText,
+            contactId: conv.contact.id,
+            orgId,
+        });
     }
 }

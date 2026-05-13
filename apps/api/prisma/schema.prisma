@@ -230,6 +230,7 @@ model Organization {
   messageTemplates MessageTemplate[]
   branches         Branch[]
   whiteLabelDomain WhiteLabelDomain?
+  integrations     OrgIntegration[]
 
   @@map("organizations")
 }
@@ -889,4 +890,28 @@ model AITrainingData {
   @@index([orgId])
   @@index([type])
   @@map("ai_training_data")
+}
+
+// =============================================================================
+// ORG INTEGRATION (Google Workspace, Slack, Notion, etc.)
+// =============================================================================
+
+model OrgIntegration {
+  id           String    @id @default(cuid())
+  orgId        String
+  provider     String    // google_workspace | slack | notion | etc
+  accessToken  String    @db.Text   // criptografado com AES-256-GCM
+  refreshToken String?   @db.Text   // criptografado
+  expiresAt    DateTime?
+  scopes       String[]
+  metadata     Json      @default("{}") // email da conta conectada, etc
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, provider])
+  @@index([orgId])
+  @@map("org_integrations")
 }

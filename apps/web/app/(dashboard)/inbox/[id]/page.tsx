@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Send, Phone, MoreVertical, CheckCheck } from "lucide-react";
+import { ArrowLeft, Send, Phone, MoreVertical, CheckCheck, Bot, UserCheck } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,14 +11,40 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useConversation, useSendMessage } from "@/hooks/useInbox";
 import { formatRelative, cn } from "@/lib/utils";
+import { api } from "@/lib/api";
+import { useSocket } from "@/hooks/useSocket";
 
 export default function ConversationPage() {
     const { id } = useParams<{ id: string }>();
     const [message, setMessage] = useState("");
+    const [botActive, setBotActive] = useState(false);
     const bottomRef = useRef<HTMLDivElement>(null);
+    const socket = useSocket();
 
     const { data, isLoading } = useConversation(id);
     const sendMessage = useSendMessage(id);
+
+    // Check for active AI agent session
+    useEffect(() => {
+        api.get<{ id?: string } | null>(`/agents/sessions/${id}`)
+            .then((r) => setBotActive(!!r.data?.id))
+            .catch(() => { });
+    }, [id]);
+
+    // Listen for handoff events
+    useEffect(() => {
+        if (!socket) return;
+        const handler = (e: { conversationId: string }) => {
+            if (e.conversationId === id) setBotActive(false);
+        };
+        socket.on("agent:handoff", handler);
+        return () => { socket.off("agent:handoff", handler); };
+    }, [socket, id]);
+
+    const takeOver = async () => {
+        await api.patch(`/inbox/conversations/${id}/status`, { status: "open" });
+        setBotActive(false);
+    };
 
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -70,8 +96,20 @@ export default function ConversationPage() {
                             </p>
                         </div>
                         <div className="flex items-center gap-2">
+                            {botActive && (
+                                <Badge variant="outline" className="border-cyan-500 text-cyan-600 text-xs flex items-center gap-1">
+                                    <Bot className="w-3 h-3" />
+                                    Bot ativo
+                                </Badge>
+                            )}
                             {data?.status === "open" && (
                                 <Badge variant="jade">Aberta</Badge>
+                            )}
+                            {botActive && (
+                                <Button variant="outline" size="sm" onClick={() => void takeOver()} className="text-xs">
+                                    <UserCheck className="w-3 h-3 mr-1" />
+                                    Assumir conversa
+                                </Button>
                             )}
                             <Button variant="outline" size="icon">
                                 <MoreVertical className="h-4 w-4" />
