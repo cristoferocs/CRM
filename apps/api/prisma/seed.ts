@@ -113,6 +113,41 @@ async function main() {
     console.log(`✅ User: ${admin.name} <${admin.email}> (${admin.role})`)
 
     // ---------------------------------------------------------------------------
+    // Platform-level SUPER_ADMIN (from environment variables — no hardcoded defaults)
+    // ---------------------------------------------------------------------------
+    const DEFAULT_ADMIN_EMAIL = process.env.DEFAULT_SUPER_ADMIN_EMAIL
+    const DEFAULT_ADMIN_NAME = process.env.DEFAULT_SUPER_ADMIN_NAME
+
+    if (!DEFAULT_ADMIN_EMAIL || !DEFAULT_ADMIN_NAME) {
+        console.warn(
+            '⚠️  DEFAULT_SUPER_ADMIN_EMAIL / DEFAULT_SUPER_ADMIN_NAME not set. ' +
+            'Skipping default admin provisioning. Add them to your .env file and re-run the seed.'
+        )
+    } else {
+        const existingDefault = await prisma.user.findFirst({
+            where: { orgId: org.id, email: DEFAULT_ADMIN_EMAIL },
+        })
+        const defaultAdmin = existingDefault
+            ? await prisma.user.update({
+                where: { id: existingDefault.id },
+                data: { role: UserRole.SUPER_ADMIN, isActive: true, branchId: null },
+            })
+            : await prisma.user.create({
+                data: {
+                    firebaseUid: `default-admin:${org.id}`,
+                    email: DEFAULT_ADMIN_EMAIL,
+                    name: DEFAULT_ADMIN_NAME,
+                    role: UserRole.SUPER_ADMIN,
+                    orgId: org.id,
+                    isActive: true,
+                },
+            })
+
+        console.log(`✅ Default SUPER_ADMIN: ${defaultAdmin.name} <${defaultAdmin.email}>`)
+        console.log(`   → Dev-login password: $DEFAULT_SUPER_ADMIN_PASSWORD (env var)`)
+    }
+
+    // ---------------------------------------------------------------------------
     // Branch Manager — Filial RJ
     // ---------------------------------------------------------------------------
     const vendedor = await prisma.user.upsert({

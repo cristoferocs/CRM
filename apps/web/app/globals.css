@@ -1,24 +1,150 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&family=JetBrains+Mono:wght@300;400;500&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  color-scheme: light;
+@layer base {
+  :root {
+    /* shadcn/ui tokens (dark theme — design system default) */
+    --background: 240 5% 4%;
+    /* #06060a void */
+    --foreground: 240 14% 95%;
+    /* #f0f0f8 t1 */
+    --card: 240 8% 8%;
+    /* #111119 surface */
+    --card-foreground: 240 14% 95%;
+    --popover: 240 8% 10%;
+    /* #17171f surface2 */
+    --popover-foreground: 240 14% 95%;
+    --primary: 257 94% 68%;
+    /* #7c5cfc violet */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 8% 12%;
+    /* #1e1e28 surface3 */
+    --secondary-foreground: 240 10% 69%;
+    /* #9898b0 t2 */
+    --muted: 240 8% 10%;
+    --muted-foreground: 240 6% 41%;
+    /* #55556a t3 */
+    --accent: 191 100% 50%;
+    /* #00d4ff cyan */
+    --accent-foreground: 240 5% 4%;
+    --destructive: 348 100% 65%;
+    /* #ff4d6d rose */
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 8% 10%;
+    /* rim */
+    --input: 240 8% 12%;
+    --ring: 257 94% 68%;
+    --radius: 10px;
 
-  /* White-label color tokens — overridden at runtime by WhiteLabelProvider */
-  --color-primary: #5b5bff;
-  --color-primary-hover: #5b5bffcc;
-  --color-secondary: #00e5c0;
-  --color-accent: #ff5b8d;
+    /* Design system direct tokens */
+    --void: #06060a;
+    --deep: #0c0c12;
+    --ds-surface: #111119;
+    --ds-surface2: #17171f;
+    --ds-surface3: #1e1e28;
+    --rim: rgba(255, 255, 255, 0.06);
+    --rim2: rgba(255, 255, 255, 0.10);
+    --cyan: #00d4ff;
+    --cyan-dim: rgba(0, 212, 255, 0.12);
+    --cyan-glow: rgba(0, 212, 255, 0.25);
+    --violet: #7c5cfc;
+    --violet-dim: rgba(124, 92, 252, 0.12);
+    --jade: #00e5a0;
+    --jade-dim: rgba(0, 229, 160, 0.10);
+    --ds-rose: #ff4d6d;
+    --rose-dim: rgba(255, 77, 109, 0.10);
+    --ds-amber: #ffb547;
+    --amber-dim: rgba(255, 181, 71, 0.10);
+    --t1: #f0f0f8;
+    --t2: #9898b0;
+    --t3: #55556a;
+    --t4: #33333f;
+
+    /* Typography */
+    --font-sans: "DM Sans", sans-serif;
+    --font-display: "Inter", sans-serif;
+    --font-mono: "JetBrains Mono", monospace;
+
+    /* White-label color tokens — overridden at runtime by WhiteLabelProvider */
+    --color-primary: #7c5cfc;
+    --color-primary-hover: rgba(124, 92, 252, 0.8);
+    --color-secondary: #00e5a0;
+    --color-accent: #00d4ff;
+  }
 }
 
-* {
-  box-sizing: border-box;
+@layer base {
+  * {
+    @apply border-border;
+    box-sizing: border-box;
+  }
+
+  html {
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-void text-t1;
+    font-family: var(--font-sans);
+    font-weight: 300;
+    line-height: 1.6;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 3px;
+    height: 3px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--ds-surface3);
+    border-radius: 2px;
+  }
 }
 
-body {
-  margin: 0;
-  background: #f8fafc;
-  color: #0f172a;
-  font-family: Arial, Helvetica, sans-serif;
+@layer utilities {
+
+  /* Noise texture overlay utility */
+  .noise-overlay::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.4;
+  }
+
+  .font-display {
+    font-family: var(--font-display);
+  }
+
+  .font-mono {
+    font-family: var(--font-mono);
+  }
+
+  /* Glow utilities */
+  .glow-violet {
+    box-shadow: 0 0 20px rgba(124, 92, 252, 0.3);
+  }
+
+  .glow-cyan {
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.3);
+  }
+
+  .glow-jade {
+    box-shadow: 0 0 20px rgba(0, 229, 160, 0.3);
+  }
 }

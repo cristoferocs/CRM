@@ -1,21 +1,51 @@
-FROM node:20-alpine AS base
+# =============================================================================
+# Stage 1: Builder — instala deps, gera Prisma Client e compila TypeScript
+# =============================================================================
+FROM node:20-alpine AS builder
+
+RUN apk add --no-cache openssl && corepack enable
+
 WORKDIR /app
-RUN corepack enable
 
-FROM base AS deps
-COPY package.json pnpm-workspace.yaml turbo.json ./
-COPY apps/api/package.json apps/api/package.json
-COPY packages/config/package.json packages/config/package.json
-COPY packages/shared/package.json packages/shared/package.json
-RUN pnpm install --filter @crm-base/api... --frozen-lockfile=false
+# Copia manifestos primeiro para aproveitar cache de camadas
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
+COPY apps/api/package.json ./apps/api/
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/config/package.json ./packages/config/
 
-FROM deps AS build
+RUN pnpm install --frozen-lockfile
+
 COPY . .
-RUN pnpm --filter @crm-base/api build
 
+# Gera Prisma Client e compila
+RUN pnpm --filter @crm-base/api exec prisma generate && \
+    pnpm --filter @crm-base/api build
+
+# =============================================================================
+# Stage 2: Runner — imagem final enxuta sem devDependencies
+# =============================================================================
 FROM node:20-alpine AS runner
+
+RUN apk add --no-cache openssl dumb-init
+
 WORKDIR /app
-ENV NODE_ENV=production
-COPY --from=build /app/apps/api/dist ./dist
-COPY --from=build /app/apps/api/package.json ./package.json
+
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 appuser
+
+COPY --from=builder --chown=appuser:nodejs /app/apps/api/dist ./dist
+COPY --from=builder --chown=appuser:nodejs /app/apps/api/node_modules ./node_modules
+COPY --from=builder --chown=appuser:nodejs /app/apps/api/prisma ./prisma
+
+USER appuser
+
+EXPOSE 3333
+
+ENV NODE_ENV=production \
+    PORT=3333
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget -qO- http://localhost:3333/health || exit 1
+
+ENTRYPOINT ["dumb-init", "--"]
 CMD ["node", "dist/server.js"]

@@ -1,4 +1,5 @@
 import { OrganizationsRepository } from "./module.repository.js";
+import { ensureDefaultSuperAdmin } from "../../lib/default-admin.js";
 import type {
     CreateOrganizationInput,
     UpdateOrganizationInput,
@@ -11,6 +12,7 @@ export class OrganizationsService {
     async create(data: CreateOrganizationInput) {
         const org = await this.repo.create(data);
         await this.repo.createDefaultPipeline(org.id);
+        await ensureDefaultSuperAdmin(org.id);
         return org;
     }
 

@@ -7,6 +7,15 @@ export interface WhiteLabelPublicSettings {
     accentColor: string;
     loginBackground: string | null;
     loginTagline: string | null;
+    // Admin-only optional fields (exposed via authenticated org endpoint)
+    emailFromName?: string | null;
+    emailFromAddress?: string | null;
+    emailFooter?: string | null;
+    supportEmail?: string | null;
+    supportWhatsapp?: string | null;
+    termsUrl?: string | null;
+    privacyUrl?: string | null;
+    customDomain?: string | null;
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3333";

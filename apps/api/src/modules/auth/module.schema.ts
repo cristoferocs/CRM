@@ -8,6 +8,11 @@ export const LoginSchema = z.object({
     firebaseToken: z.string().min(1),
 });
 
+export const DevLoginSchema = z.object({
+    email: z.string().email(),
+    password: z.string().min(1),
+});
+
 export const RefreshSchema = z.object({
     refreshToken: z.string().min(1),
 });
@@ -72,6 +77,7 @@ export const RefreshResponseSchema = z.object({
 // ---------------------------------------------------------------------------
 
 export type LoginInput = z.infer<typeof LoginSchema>;
+export type DevLoginInput = z.infer<typeof DevLoginSchema>;
 export type RefreshInput = z.infer<typeof RefreshSchema>;
 export type MeResponse = z.infer<typeof MeResponseSchema>;
 export type LoginResponse = z.infer<typeof LoginResponseSchema>;

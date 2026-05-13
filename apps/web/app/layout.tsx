@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import "./globals.css";
 import { WhiteLabelProvider } from "@/components/white-label-provider";
 import { getDefaultWhiteLabel, getWhiteLabelByDomain } from "@/lib/white-label";
+import { Providers } from "@/components/providers";
 
 export const metadata: Metadata = {
   title: "CRM Base",
@@ -28,8 +29,10 @@ export default async function RootLayout({
         <meta name="theme-color" content={wl.primaryColor} />
       </head>
       <body>
-        <WhiteLabelProvider settings={wl} />
-        {children}
+        <Providers>
+          <WhiteLabelProvider settings={wl} />
+          {children}
+        </Providers>
       </body>
     </html>
   );
