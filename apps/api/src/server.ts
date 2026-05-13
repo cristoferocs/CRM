@@ -29,7 +29,7 @@ import { closeQueues } from "./queue/queues.js";
 import { createAutomationWorker } from "./queue/workers/automation.worker.js";
 import { createInboxWorker } from "./queue/workers/inbox.worker.js";
 import { createKnowledgeWorker } from "./queue/workers/knowledge.worker.js";
-import { createLearningWorker } from "./queue/workers/learning.worker.js";
+import { createFlowLearningWorker } from "./modules/ai/agents/learning/learning.worker.js";
 import { initializeSocket } from "./websocket/socket.js";
 
 const app = Fastify({
@@ -84,7 +84,7 @@ const host = process.env.HOST ?? "0.0.0.0";
 const automationWorker = createAutomationWorker();
 const inboxWorker = createInboxWorker();
 const knowledgeWorker = createKnowledgeWorker();
-const learningWorker = createLearningWorker();
+const learningWorker = createFlowLearningWorker();
 
 const shutdown = async (signal: NodeJS.Signals) => {
   app.log.info({ signal }, "shutting down api");
