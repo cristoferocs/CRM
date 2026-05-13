@@ -119,8 +119,7 @@ export class FlowLearner {
             {
                 attempts: 2,
                 backoff: { type: "exponential", delay: 15_000 },
-                timeout: 30 * 60 * 1_000, // 30 min
-            },
+            } as never,
         );
 
         return job.id;

@@ -91,10 +91,8 @@ async function processLegacyAutomationJob(
 
     await automationsService.execute(
         automationId,
-        contactId,
-        dealId,
+        { contactId, dealId, orgId, ...metadata },
         orgId,
-        metadata,
     );
 }
 

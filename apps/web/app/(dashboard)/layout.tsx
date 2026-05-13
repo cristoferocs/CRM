@@ -23,6 +23,9 @@ import {
     LogOut,
     Moon,
     Sun,
+    Trophy,
+    FileText,
+    Plug,
 } from "lucide-react";
 import { useWhiteLabelStore } from "@/stores/white-label.store";
 import { useUIStore } from "@/stores/ui.store";
@@ -72,6 +75,9 @@ const INTELLIGENCE_NAV = [
 
 const ANALYSIS_NAV = [
     { label: "Relatórios", href: "/reports", icon: BarChart2 },
+    { label: "Gamificação", href: "/gamification", icon: Trophy },
+    { label: "Documentos", href: "/documents", icon: FileText },
+    { label: "Integrações", href: "/settings/integrations", icon: Plug },
     { label: "Configurações", href: "/settings", icon: Settings },
 ] as const;
 

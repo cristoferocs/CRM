@@ -39,7 +39,7 @@ const getStageColor = (index: number, total: number): { fill: string; stroke: st
         { fill: "rgba(124,92,252,0.10)", stroke: "rgba(124,92,252,0.5)", text: "#7c5cfc" },
         { fill: "rgba(255,181,71,0.08)", stroke: "rgba(255,181,71,0.4)", text: "#ffb547" },
     ];
-    return variants[(index - 1) % variants.length];
+    return variants[(index - 1) % variants.length]!;
 };
 
 // ---------------------------------------------------------------------------
@@ -127,13 +127,13 @@ export function AgentFlowDiagram({ stages, className }: AgentFlowDiagramProps) {
     });
 
     const svgWidth = useZigzag ? 40 + 2 * COL_W - H_GAP + 60 : NODE_W + 120;
-    const svgHeight = positions[positions.length - 1]?.y + NODE_H + 30;
+    const svgHeight = (positions[positions.length - 1]?.y ?? 0) + NODE_H + 30;
 
     // Arrow midpoints
     const arrows: { x1: number; y1: number; x2: number; y2: number }[] = [];
     for (let i = 0; i < sorted.length - 1; i++) {
-        const from = positions[i];
-        const to = positions[i + 1];
+        const from = positions[i]!;
+        const to = positions[i + 1]!;
         arrows.push({
             x1: from.x + NODE_W / 2,
             y1: from.y + NODE_H,
@@ -181,7 +181,7 @@ export function AgentFlowDiagram({ stages, className }: AgentFlowDiagramProps) {
 
                     {/* Nodes */}
                     {sorted.map((stage, i) => {
-                        const pos = positions[i];
+                        const pos = positions[i]!;
                         const col = getStageColor(i, sorted.length);
                         const isSelected = selected?.id === stage.id;
 

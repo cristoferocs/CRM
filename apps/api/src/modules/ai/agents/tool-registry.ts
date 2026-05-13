@@ -133,7 +133,7 @@ export class ToolRegistry {
                         params,
                         success: result.success,
                         error: result.error,
-                    },
+                    } as never,
                     // contactId is required; use a system placeholder via caller
                     contactId: "system",
                     orgId,

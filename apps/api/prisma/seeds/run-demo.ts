@@ -22,6 +22,7 @@ const seeds = [
     "s07-conversations",
     "s08-payments-insights",
     "s09-activities-audit",
+    "s10-automations-docs",
 ];
 
 console.log("\n╔══════════════════════════════════════════════════════════════╗");
@@ -56,11 +57,12 @@ console.log("║  S06 — Deals         25 deals · ~65 movimentos de stage     
 console.log("║  S07 — Conversas     10 convs · ~45 msgs · 2 sessions       ║");
 console.log("║  S08 — Pagamentos    12 pgtos · 8 insights · 6 trainings    ║");
 console.log("║  S09 — Atividades    20 ativs · 13 timeline · 15 audits     ║");
+console.log("║  S10 — Automações    6 automações · 8 documentos           ║");
 console.log("╠══════════════════════════════════════════════════════════════╣");
 console.log(`║  ⏱  Tempo total: ${elapsed}s`.padEnd(63) + "║");
 console.log("╠══════════════════════════════════════════════════════════════╣");
 const loginEmail = process.env.DEFAULT_SUPER_ADMIN_EMAIL ?? "cristofer.odair@skynns.com";
-const loginPass  = process.env.DEFAULT_SUPER_ADMIN_PASSWORD ?? "@dmin$777";
+const loginPass = process.env.DEFAULT_SUPER_ADMIN_PASSWORD ?? "@dmin$777";
 console.log(("║  🔑  Login:  " + loginEmail).padEnd(63) + "║");
 console.log(("║  🔐  Senha:  " + loginPass).padEnd(63) + "║");
 console.log("╚══════════════════════════════════════════════════════════════╝\n");

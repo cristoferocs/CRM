@@ -26,9 +26,10 @@ export class OrganizationsRepository {
             data: {
                 name: "Pipeline Comercial",
                 isDefault: true,
+                type: "SALES",
                 orgId,
                 stages: { createMany: { data: DEFAULT_STAGES.map((s) => ({ ...s })) } },
-            },
+            } as never,
         });
     }
 

@@ -116,7 +116,7 @@ export class AgentRepository {
         toolResult?: string;
         tokensUsed?: number;
     }) {
-        return prisma.aIAgentTurn.create({ data });
+        return prisma.aIAgentTurn.create({ data: data as never });
     }
 
     listTurns(sessionId: string) {
@@ -136,7 +136,7 @@ export class AgentRepository {
         flowTemplate: Record<string, unknown>;
         notes?: string;
     }) {
-        return prisma.agentFlowVersion.create({ data });
+        return prisma.agentFlowVersion.create({ data: data as never });
     }
 
     listFlowVersions(agentId: string) {
@@ -165,7 +165,7 @@ export class AgentRepository {
                 approvedAt: new Date(),
                 isActive: true,
                 ...(patch ?? {}),
-            },
+            } as never,
         });
     }
 
@@ -197,7 +197,7 @@ export class AgentRepository {
     ) {
         return prisma.agentLearningJob.update({
             where: { id: jobId },
-            data: patch,
+            data: patch as never,
         });
     }
 

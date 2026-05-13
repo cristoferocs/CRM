@@ -124,6 +124,8 @@ describe("PipelineService", () => {
         it("creates a deal in the correct stage", async () => {
             const input = {
                 title: "My Deal",
+                value: 0,
+                probability: 0,
                 stageId: "stage-1",
                 pipelineId: "pipeline-1",
                 contactId: "contact-1",
@@ -147,6 +149,8 @@ describe("PipelineService", () => {
         it("uses provided ownerId when set in input", async () => {
             const input = {
                 title: "Delegated Deal",
+                value: 0,
+                probability: 0,
                 stageId: "stage-1",
                 pipelineId: "pipeline-1",
                 contactId: "contact-1",
@@ -167,7 +171,7 @@ describe("PipelineService", () => {
             mockRepo.createDeal.mockResolvedValue(deal);
 
             await service.createDeal(
-                { title: "New Deal", stageId: "stage-1", pipelineId: "pipeline-1", contactId: "contact-1", currency: "BRL", customFields: {} },
+                { title: "New Deal", value: 0, probability: 0, stageId: "stage-1", pipelineId: "pipeline-1", contactId: "contact-1", currency: "BRL", customFields: {} },
                 ORG,
                 USER_SELLER_A,
             );
@@ -192,7 +196,7 @@ describe("PipelineService", () => {
 
             const result = await service.moveDeal(
                 "deal-1",
-                { stageId: "stage-2" },
+                { toStageId: "stage-2", movedBy: "HUMAN" },
                 ORG,
                 USER_SELLER_A,
                 "SELLER",
@@ -204,7 +208,7 @@ describe("PipelineService", () => {
                 ORG,
                 expect.any(Object),
             );
-            expect(result!.stageId).toBe("stage-2");
+            expect(result!.deal!.stageId).toBe("stage-2");
         });
 
         it("sets closedAt and records timeline event when deal is marked as won", async () => {
@@ -219,7 +223,7 @@ describe("PipelineService", () => {
 
             const result = await service.moveDeal(
                 "deal-1",
-                { stageId: "stage-5" },
+                { toStageId: "stage-5", movedBy: "HUMAN" },
                 ORG,
                 USER_SELLER_A,
                 "SELLER",
@@ -231,7 +235,7 @@ describe("PipelineService", () => {
                 ORG,
                 expect.objectContaining({ isWon: true }),
             );
-            expect(result!.closedAt).toBeDefined();
+            expect(result!.deal!.closedAt).toBeDefined();
             expect(mockRepo.createTimelineEvent).toHaveBeenCalledWith(
                 expect.objectContaining({ type: "DEAL_WON" }),
             );
@@ -245,7 +249,7 @@ describe("PipelineService", () => {
             mockRepo.findStageById.mockResolvedValue(lostStage);
 
             await expect(
-                service.moveDeal("deal-1", { stageId: "stage-6" }, ORG, USER_SELLER_A, "SELLER"),
+                service.moveDeal("deal-1", { toStageId: "stage-6", movedBy: "HUMAN" }, ORG, USER_SELLER_A, "SELLER"),
             ).rejects.toMatchObject({ statusCode: 422 });
         });
 
@@ -253,7 +257,7 @@ describe("PipelineService", () => {
             mockRepo.findDealById.mockResolvedValue(null);
 
             await expect(
-                service.moveDeal("nonexistent", { stageId: "stage-2" }, ORG, USER_SELLER_A, "SELLER"),
+                service.moveDeal("nonexistent", { toStageId: "stage-2", movedBy: "HUMAN" }, ORG, USER_SELLER_A, "SELLER"),
             ).rejects.toMatchObject({ statusCode: 404 });
         });
     });

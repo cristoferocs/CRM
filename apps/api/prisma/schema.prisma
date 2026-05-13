@@ -130,6 +130,73 @@ enum AutomationLogStatus {
   SKIPPED
 }
 
+enum AutomationTriggerEnum {
+  CONTACT_CREATED
+  CONTACT_UPDATED
+  CONTACT_TAG_ADDED
+  LEAD_SCORE_CHANGED
+  DEAL_CREATED
+  DEAL_STAGE_CHANGED
+  DEAL_WON
+  DEAL_LOST
+  DEAL_ROTTING
+  MESSAGE_RECEIVED
+  MESSAGE_KEYWORD
+  CONVERSATION_OPENED
+  CONVERSATION_RESOLVED
+  TIME_DELAY
+  SCHEDULED
+  DATE_FIELD
+  PAYMENT_RECEIVED
+  PAYMENT_OVERDUE
+  PAYMENT_FAILED
+  AGENT_HANDOFF
+  AGENT_GOAL_ACHIEVED
+}
+
+enum NotificationType {
+  MENTION
+  DEAL_ASSIGNED
+  DEAL_MOVED
+  COMMENT_REPLY
+  AGENT_HANDOFF
+  PAYMENT_RECEIVED
+  TASK_DUE
+  AUTOMATION_FAILED
+  LEAD_HOT
+  ACHIEVEMENT_UNLOCKED
+}
+
+enum DocumentType {
+  PROPOSAL
+  CONTRACT
+  NDA
+  INVOICE
+  ONBOARDING
+  OTHER
+}
+
+enum DocumentStatus {
+  DRAFT
+  SENT
+  PARTIALLY_SIGNED
+  SIGNED
+  EXPIRED
+  CANCELLED
+}
+
+enum AchievementType {
+  FIRST_DEAL_WON
+  DEAL_STREAK
+  REVENUE_MILESTONE
+  FAST_CLOSER
+  RESPONSE_MASTER
+  OBJECTION_CRUSHER
+  AI_DELEGATOR
+  TOP_PERFORMER
+  COMEBACK_KID
+}
+
 enum KnowledgeBaseType {
   DOCUMENT
   WEBSITE
@@ -161,6 +228,9 @@ enum AgentType {
   QUALIFICATION
   COLLECTIONS
   ONBOARDING
+  CUSTOMER_SUCCESS
+  RETENTION
+  UPSELL
   CUSTOM
 }
 
@@ -292,6 +362,14 @@ model Organization {
   branches         Branch[]
   whiteLabelDomain WhiteLabelDomain?
   integrations     OrgIntegration[]
+  comments         Comment[]
+  notifications    Notification[]
+  documents        Document[]
+  documentTemplates DocumentTemplate[]
+  achievements     Achievement[]
+  goals            Goal[]
+  leadScoringConfig LeadScoringConfig?
+  zapierSubscriptions ZapierSubscription[]
 
   @@map("organizations")
 }
@@ -370,6 +448,10 @@ model User {
   messages     Message[]
   timelineEvents TimelineEvent[]
   auditLogs    AuditLog[]
+  comments     Comment[]     @relation("CommentAuthor")
+  notifications Notification[]
+  achievements  Achievement[]
+  goals         Goal[]
 
   @@index([orgId])
   @@index([email])
@@ -401,6 +483,11 @@ model Contact {
   pixelSessionId String?
   tags         String[]
   customFields Json          @default("{}")
+  // Lead scoring
+  leadScore        Int?
+  leadTemperature  String?
+  lastScoredAt     DateTime?
+  scoreHistory     Json      @default("[]")
   orgId        String
   companyId    String?
   branchId     String?
@@ -417,11 +504,14 @@ model Contact {
   activities    Activity[]
   payments      Payment[]
   automationLogs AutomationLog[]
+  comments      Comment[]
+  documents     Document[]
 
   @@index([orgId])
   @@index([email])
   @@index([phone])
   @@index([source])
+  @@index([orgId, leadScore])
   @@map("contacts")
 }
 
@@ -595,6 +685,8 @@ model Deal {
   automationLogs AutomationLog[]
   stageAutomationLogs StageAutomationLog[]
   stageMovements DealStageMovement[]
+  comments       Comment[]
+  documents      Document[]
 
   @@index([orgId, pipelineId, stageId])
   @@index([orgId, ownerId])
@@ -820,11 +912,27 @@ model Automation {
   id          String  @id @default(cuid())
   name        String
   description String?
-  isActive    Boolean @default(true)
-  trigger     Json
+  isActive    Boolean @default(false)
+  orgId       String
+
+  // Trigger
+  triggerType   AutomationTriggerEnum @default(CONTACT_CREATED)
+  triggerConfig Json  @default("{}")
+
+  // Legacy fields kept for backward compat
+  trigger     Json    @default("{}")
   conditions  Json    @default("[]")
   actions     Json    @default("[]")
-  orgId       String
+
+  // Workflow graph nodes/edges
+  nodes       Json    @default("[]")
+  edges       Json    @default("[]")
+
+  // Statistics
+  executionCount Int       @default(0)
+  lastExecutedAt DateTime?
+  successCount   Int       @default(0)
+  failureCount   Int       @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -832,7 +940,7 @@ model Automation {
   org  Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
   logs AutomationLog[]
 
-  @@index([orgId])
+  @@index([orgId, isActive])
   @@map("automations")
 }
 
@@ -841,10 +949,14 @@ model AutomationLog {
   automationId     String
   contactId        String?
   dealId           String?
+  conversationId   String?
   orgId            String
-  status           AutomationLogStatus
+  status           String              // success | failed | skipped | partial
+  triggerData      Json                @default("{}")
+  nodesExecuted    Json                @default("[]")
   executedActions  Json                @default("[]")
   error            String?
+  duration         Int?
   createdAt        DateTime            @default(now())
 
   automation Automation   @relation(fields: [automationId], references: [id], onDelete: Cascade)
@@ -852,9 +964,9 @@ model AutomationLog {
   deal       Deal?        @relation(fields: [dealId], references: [id], onDelete: SetNull)
   org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
-  @@index([automationId])
+  @@index([automationId, createdAt])
   @@index([contactId])
-  @@index([orgId])
+  @@index([orgId, createdAt])
   @@map("automation_logs")
 }
 
@@ -1228,4 +1340,227 @@ model OrgIntegration {
   @@unique([orgId, provider])
   @@index([orgId])
   @@map("org_integrations")
+}
+
+// =============================================================================
+// LEAD SCORING
+// =============================================================================
+
+model LeadScoringConfig {
+  id     String @id @default(cuid())
+  orgId  String @unique
+  isActive Boolean @default(true)
+
+  demographicRules Json @default("[]")
+  behavioralRules  Json @default("[]")
+
+  aiScoringEnabled Boolean @default(true)
+  aiWeight         Float   @default(0.4)
+
+  hotThreshold  Int @default(80)
+  warmThreshold Int @default(50)
+  coldThreshold Int @default(0)
+
+  updatedAt DateTime @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@map("lead_scoring_configs")
+}
+
+// =============================================================================
+// COLLABORATION — COMMENTS
+// =============================================================================
+
+model Comment {
+  id         String  @id @default(cuid())
+  content    String  @db.Text
+  mentions   String[]
+  isResolved Boolean  @default(false)
+  isInternal Boolean  @default(true)
+
+  dealId         String?
+  contactId      String?
+  conversationId String?
+  orgId          String
+  authorId       String
+  parentId       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  author   User         @relation("CommentAuthor", fields: [authorId], references: [id])
+  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  deal     Deal?        @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  contact  Contact?     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  replies  Comment[]    @relation("CommentReplies")
+  parent   Comment?     @relation("CommentReplies", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([dealId])
+  @@index([contactId])
+  @@index([orgId, createdAt])
+  @@map("comments")
+}
+
+// =============================================================================
+// NOTIFICATIONS
+// =============================================================================
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  orgId     String
+  type      NotificationType
+  title     String
+  body      String
+  metadata  Json             @default("{}")
+  isRead    Boolean          @default(false)
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+  @@index([orgId])
+  @@map("notifications")
+}
+
+// =============================================================================
+// DOCUMENTS
+// =============================================================================
+
+model Document {
+  id          String         @id @default(cuid())
+  name        String
+  type        DocumentType
+  status      DocumentStatus @default(DRAFT)
+
+  fileUrl     String?
+  fileSize    Int?
+  mimeType    String?
+  version     Int            @default(1)
+
+  templateId  String?
+  variables   Json           @default("{}")
+
+  signers     Json           @default("[]")
+  signedAt    DateTime?
+
+  dealId      String?
+  contactId   String?
+  orgId       String
+  createdById String
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  expiresAt DateTime?
+
+  deal     Deal?        @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  contact  Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  versions DocumentVersion[]
+
+  @@index([orgId, type])
+  @@index([dealId])
+  @@map("documents")
+}
+
+model DocumentVersion {
+  id          String   @id @default(cuid())
+  documentId  String
+  version     Int
+  fileUrl     String
+  createdById String
+  changes     String?
+  createdAt   DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@map("document_versions")
+}
+
+model DocumentTemplate {
+  id          String       @id @default(cuid())
+  name        String
+  description String?
+  type        DocumentType
+  content     String       @db.Text
+  variables   Json         @default("[]")
+  thumbnail   String?
+  orgId       String
+  isPublic    Boolean      @default(false)
+  usageCount  Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("document_templates")
+}
+
+// =============================================================================
+// GAMIFICATION
+// =============================================================================
+
+model Achievement {
+  id          String          @id @default(cuid())
+  userId      String
+  orgId       String
+  type        AchievementType
+  title       String
+  description String
+  icon        String
+  points      Int
+  unlockedAt  DateTime        @default(now())
+  metadata    Json            @default("{}")
+
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([orgId, type])
+  @@map("achievements")
+}
+
+model Goal {
+  id        String   @id @default(cuid())
+  orgId     String
+  userId    String?
+  title     String
+  metric    String
+  target    Float
+  current   Float    @default(0)
+  period    String
+  startDate DateTime
+  endDate   DateTime
+  isActive  Boolean  @default(true)
+
+  user User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, isActive])
+  @@map("goals")
+}
+
+// =============================================================================
+// ZAPIER / MAKE.COM SUBSCRIPTIONS
+// =============================================================================
+
+model ZapierSubscription {
+  id         String   @id @default(cuid())
+  orgId      String
+  event      String
+  targetUrl  String
+  provider   String   @default("zapier") // zapier | make
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, event])
+  @@map("zapier_subscriptions")
 }
