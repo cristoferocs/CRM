@@ -50,6 +50,7 @@
   "devDependencies": {
     "@crm-base/config": "workspace:*",
     "@types/node": "^22.10.2",
+    "@types/nodemailer": "^8.0.0",
     "tsup": "^8.4.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",

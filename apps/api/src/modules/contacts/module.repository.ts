@@ -34,7 +34,8 @@ export class ContactsRepository {
         const { search, type, source, tags, assignedTo, dateFrom, dateTo, page, limit } = filters;
         const skip = (page - 1) * limit;
 
-        const where: Parameters<typeof prisma.contact.findMany>[0]["where"] = {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const where: any = {
             orgId,
             isActive: true,
             ...(type ? { type } : {}),

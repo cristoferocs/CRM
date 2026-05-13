@@ -18,7 +18,8 @@ function parseCSV(text: string): Record<string, string>[] {
     if (lines.length < 2) return [];
 
     // Detect delimiter based on the header row
-    const headerLine = lines[0];
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const headerLine = lines[0]!;
     const delimiter = headerLine.includes(";") ? ";" : ",";
 
     const headers = splitCSVRow(headerLine, delimiter).map((h) => h.trim().toLowerCase());
@@ -26,14 +27,15 @@ function parseCSV(text: string): Record<string, string>[] {
     const result: Record<string, string>[] = [];
 
     for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim();
+        const line = (lines[i] ?? "").trim();
         if (!line) continue;
 
         const values = splitCSVRow(line, delimiter);
         const row: Record<string, string> = {};
 
         for (let j = 0; j < headers.length; j++) {
-            row[headers[j]] = (values[j] ?? "").trim();
+            const key = headers[j];
+            if (key !== undefined) row[key] = (values[j] ?? "").trim();
         }
 
         result.push(row);
@@ -249,6 +251,7 @@ export class ContactsService {
 
         for (let i = 0; i < rows.length; i++) {
             const row = rows[i];
+            if (!row) continue;
             const rowNum = i + 2; // 1-indexed + header row
 
             if (!row.name?.trim()) {
