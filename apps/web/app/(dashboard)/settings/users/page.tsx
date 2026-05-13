@@ -17,7 +17,7 @@ function useUsers() {
         queryKey: ["users"],
         queryFn: async () => {
             const res = await api.get("/users");
-            return res.data;
+            return { ...res.data, users: res.data.data ?? [] };
         },
     });
 }

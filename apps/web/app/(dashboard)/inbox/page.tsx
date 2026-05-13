@@ -234,7 +234,7 @@ function ConversationPanel({ conversationId }: { conversationId: string }) {
                                     </Badge>
                                 )}
                                 {data?.status === "open" && <Badge variant="jade">Aberta</Badge>}
-                                {data?.status === "bot" && <Badge variant="violet">Bot</Badge>}
+                                {data?.status === "bot" && <Badge variant="cyan">Bot</Badge>}
                                 {data?.status === "resolved" && <Badge variant="muted">Resolvida</Badge>}
                             </div>
                             <Link

@@ -26,14 +26,34 @@ export default function LoginPage() {
     const { loginWithEmail, loginWithGoogle, isDevMode } = useAuth();
     const { isAuthenticated, token } = useAuthStore();
 
-    // Redirect away if already authenticated (e.g. Zustand rehydrated from localStorage)
+    // Redirect away only if a token is present AND still valid. We probe
+    // /auth/me before navigating — otherwise a stale persisted Zustand state
+    // (with an expired JWT) would loop between /login and /.
     useEffect(() => {
-        if (isAuthenticated && token) {
-            // Re-set cookie in case it was lost (browser restart)
-            const maxAge = 7 * 24 * 60 * 60;
-            document.cookie = `crm:access_token=${token}; path=/; SameSite=Lax; max-age=${maxAge}`;
-            router.replace("/");
-        }
+        if (!isAuthenticated || !token) return;
+        let cancelled = false;
+        (async () => {
+            try {
+                const res = await fetch(
+                    `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3333"}/auth/me`,
+                    { headers: { Authorization: `Bearer ${token}` } },
+                );
+                if (cancelled) return;
+                if (res.ok) {
+                    const maxAge = 7 * 24 * 60 * 60;
+                    document.cookie = `crm:access_token=${token}; path=/; SameSite=Lax; max-age=${maxAge}`;
+                    router.replace("/");
+                } else {
+                    // Token is stale — clear and stay on /login
+                    useAuthStore.getState().clearAuth();
+                }
+            } catch {
+                // Network error: do not redirect, let the user try to log in
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
     }, [isAuthenticated, token, router]);
 
     const [error, setError] = useState<string | null>(null);

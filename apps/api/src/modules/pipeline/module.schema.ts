@@ -1,4 +1,16 @@
 import { z } from "zod";
+import {
+    StageAutomationRuleSchema,
+    StageRequiredFieldSchema,
+    StageRulesArraySchema,
+} from "./stage-automation.schema.js";
+
+export {
+    StageAutomationRuleSchema,
+    StageAutomationActionSchema,
+    StageAutomationConditionGroupSchema,
+    StageRequiredFieldSchema,
+} from "./stage-automation.schema.js";
 
 // ---------------------------------------------------------------------------
 // Enums (mirror Prisma enums for input validation)
@@ -73,10 +85,10 @@ export const CreateStageSchema = z.object({
     probability: z.number().int().min(0).max(100).default(0),
     rottingDays: z.number().int().min(1).optional(),
     maxDeals: z.number().int().min(1).optional(),
-    onEnterActions: z.array(z.record(z.string(), z.unknown())).default([]),
-    onExitActions: z.array(z.record(z.string(), z.unknown())).default([]),
-    onRottingActions: z.array(z.record(z.string(), z.unknown())).default([]),
-    requiredFields: z.array(z.record(z.string(), z.unknown())).default([]),
+    onEnterActions: StageRulesArraySchema,
+    onExitActions: StageRulesArraySchema,
+    onRottingActions: StageRulesArraySchema,
+    requiredFields: z.array(StageRequiredFieldSchema).default([]),
     isWon: z.boolean().default(false),
     isLost: z.boolean().default(false),
 });
@@ -87,6 +99,10 @@ export const ReorderStagesSchema = z.object({
     stages: z
         .array(z.object({ id: z.string(), order: z.number().int().min(0) }))
         .min(1),
+});
+
+export const RemoveStageBodySchema = z.object({
+    targetStageId: z.string().optional(),
 });
 
 export const AssignAgentToStageSchema = z.object({
@@ -189,6 +205,16 @@ export const ActivateAgentSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Stage automation test (dry-run)
+// ---------------------------------------------------------------------------
+
+export const TestStageAutomationSchema = z.object({
+    trigger: z.enum(["enter", "exit", "rotting"]).default("enter"),
+    dealId: z.string(),
+    ruleId: z.string().optional(),
+});
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -207,3 +233,5 @@ export type PipelineStatsQuery = z.infer<typeof PipelineStatsQuerySchema>;
 export type OverviewQuery = z.infer<typeof OverviewQuerySchema>;
 export type CreateDealActivityInput = z.infer<typeof CreateDealActivitySchema>;
 export type ActivateAgentInput = z.infer<typeof ActivateAgentSchema>;
+export type RemoveStageInput = z.infer<typeof RemoveStageBodySchema>;
+export type TestStageAutomationInput = z.infer<typeof TestStageAutomationSchema>;

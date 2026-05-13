@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils";
 const STATUS_VARIANTS: Record<string, "default" | "jade" | "cyan" | "amber" | "rose" | "muted"> = {
     lead: "default",
     client: "jade",
+    partner: "cyan",
     prospect: "cyan",
     proposal: "amber",
     lost: "rose",
@@ -42,6 +43,7 @@ const STATUS_VARIANTS: Record<string, "default" | "jade" | "cyan" | "amber" | "r
 const STATUS_LABELS: Record<string, string> = {
     lead: "Lead",
     client: "Cliente",
+    partner: "Parceiro",
     prospect: "Prospect",
     proposal: "Proposta",
     lost: "Perdido",
@@ -215,11 +217,8 @@ export default function ContactsPage() {
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="lead">Lead</SelectItem>
-                                <SelectItem value="prospect">Prospect</SelectItem>
                                 <SelectItem value="client">Cliente</SelectItem>
-                                <SelectItem value="proposal">Proposta</SelectItem>
-                                <SelectItem value="lost">Perdido</SelectItem>
-                                <SelectItem value="inactive">Inativo</SelectItem>
+                                <SelectItem value="partner">Parceiro</SelectItem>
                             </SelectContent>
                         </Select>
 

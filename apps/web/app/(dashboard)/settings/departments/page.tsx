@@ -14,7 +14,7 @@ function useDepartments() {
         queryKey: ["departments"],
         queryFn: async () => {
             const res = await api.get("/departments");
-            return res.data;
+            return { ...res.data, departments: res.data.data ?? [] };
         },
     });
 }

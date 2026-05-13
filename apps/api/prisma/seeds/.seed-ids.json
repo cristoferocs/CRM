@@ -1,0 +1,26 @@
+{
+  "orgId": "cmp4fyqcc0000wvlw9a2fyf71",
+  "branches": {
+    "sp": "cmp4fyqcl0002wvlw0grm0r8r",
+    "rj": "cmp4fyqcr0004wvlwrrb8ngir",
+    "bh": "cmp4fyqcv0006wvlwrnli9ivb"
+  },
+  "departments": {
+    "comercial": "cmp4fyqd10008wvlw00w055lt",
+    "suporte": "cmp4fyqd3000awvlw5gzusq8d",
+    "marketing": "cmp4fyqd6000cwvlw0b7wht6r",
+    "financeiro": "cmp4fyqd9000ewvlwioutw5e4"
+  },
+  "users": {
+    "admin": "cmp4fyqda000gwvlwe06b3o2w",
+    "fernanda": "cmp4fyqdg000iwvlwtgawyk6p",
+    "ricardo": "cmp4fyqdj000kwvlww2j5djc2",
+    "juliana": "cmp4fyqdn000mwvlw71kw63if",
+    "thiago": "cmp4fyqdr000owvlw3z3duhel",
+    "amanda": "cmp4fyqdu000qwvlwuzfb85tz",
+    "bruno": "cmp4fyqdy000swvlweyjb03hm",
+    "patricia": "cmp4fyqe1000uwvlw44gqdygj",
+    "lucas": "cmp4fyqe5000wwvlwjvvsdpyf",
+    "sofia": "cmp4fyqe8000ywvlwrecvh5hs"
+  }
+}

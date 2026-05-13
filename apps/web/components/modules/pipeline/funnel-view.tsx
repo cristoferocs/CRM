@@ -37,18 +37,47 @@ export function FunnelView({ pipelineId }: FunnelViewProps) {
     const { data, isLoading, isError } = useQuery({
         queryKey: ["pipelines", pipelineId, "stats"],
         queryFn: async () => {
-            const { data } = await api.get(`/pipeline/pipelines/${pipelineId}/stats`);
-            return data as {
+            const { data: raw } = await api.get(`/pipeline/pipelines/${pipelineId}/stats`);
+            // API returns { stageStats, conversionFunnel, winRate, lostRate, ... }
+            const stageStats = (raw.stageStats ?? []) as Array<{
+                stageId: string;
+                stageName: string;
+                isWon: boolean;
+                isLost: boolean;
+                dealCount: number;
+                totalValue: number;
+                rottingCount: number;
+                avgDaysInStage: number | null;
+            }>;
+            const conversionFunnel: FunnelStage[] = stageStats.map((s, i) => ({
+                stageId: s.stageId,
+                stageName: s.stageName,
+                deals: s.dealCount,
+                value: s.totalValue,
+                conversionFromPrev:
+                    i === 0
+                        ? null
+                        : (() => {
+                            const prev = stageStats[i - 1];
+                            if (!prev || prev.dealCount === 0) return null;
+                            return Math.round((s.dealCount / prev.dealCount) * 10000) / 100;
+                        })(),
+                avgDaysInStage: s.avgDaysInStage,
+            }));
+            return {
                 overview: {
-                    totalDeals: number;
-                    totalValue: number;
-                    wonDeals: number;
-                    lostDeals: number;
-                    rottingDeals: number;
-                    avgSalesCycleDays: number;
-                    winRate: number;
-                };
-                conversionFunnel: FunnelStage[];
+                    totalDeals: stageStats.reduce((a, s) => a + s.dealCount, 0),
+                    totalValue: stageStats.reduce((a, s) => a + s.totalValue, 0),
+                    wonDeals: stageStats.filter((s) => s.isWon).reduce((a, s) => a + s.dealCount, 0),
+                    lostDeals: stageStats.filter((s) => s.isLost).reduce((a, s) => a + s.dealCount, 0),
+                    rottingDeals: stageStats.reduce((a, s) => a + s.rottingCount, 0),
+                    avgSalesCycleDays:
+                        stageStats.length > 0
+                            ? stageStats.reduce((a, s) => a + (s.avgDaysInStage ?? 0), 0) / stageStats.length
+                            : 0,
+                    winRate: raw.winRate ?? 0,
+                },
+                conversionFunnel,
             };
         },
         enabled: !!pipelineId,

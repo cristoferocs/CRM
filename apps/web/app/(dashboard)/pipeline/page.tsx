@@ -236,16 +236,43 @@ export default function PipelinePage() {
             );
         };
 
+        const onStageChanged = () => {
+            qc.invalidateQueries({ queryKey: ["pipelines"] });
+        };
+
+        const onAutomationExecuted = (payload: {
+            ruleName?: string;
+            stageName?: string;
+            status?: "SUCCESS" | "FAILED" | "SKIPPED";
+        }) => {
+            qc.invalidateQueries({ queryKey: ["pipelines"] });
+            if (payload.status === "FAILED") {
+                toast.error(`⚡ Automação falhou: ${payload.ruleName ?? "regra"}`);
+            } else if (payload.status === "SUCCESS") {
+                toast.success(`⚡ ${payload.ruleName ?? "Automação"} executada${payload.stageName ? ` em ${payload.stageName}` : ""}`);
+            }
+        };
+
         socket.on("pipeline:deal_moved", onDealMoved);
         socket.on("pipeline:movement", onDealMoved);
         socket.on("pipeline:deals_rotting", onDealsRotting);
         socket.on("agent:proactive_contact", onAgentProactive);
+        socket.on("pipeline:stage_created", onStageChanged);
+        socket.on("pipeline:stage_updated", onStageChanged);
+        socket.on("pipeline:stage_deleted", onStageChanged);
+        socket.on("pipeline:stage_reordered", onStageChanged);
+        socket.on("pipeline:automation_executed", onAutomationExecuted);
 
         return () => {
             socket.off("pipeline:deal_moved", onDealMoved);
             socket.off("pipeline:movement", onDealMoved);
             socket.off("pipeline:deals_rotting", onDealsRotting);
             socket.off("agent:proactive_contact", onAgentProactive);
+            socket.off("pipeline:stage_created", onStageChanged);
+            socket.off("pipeline:stage_updated", onStageChanged);
+            socket.off("pipeline:stage_deleted", onStageChanged);
+            socket.off("pipeline:stage_reordered", onStageChanged);
+            socket.off("pipeline:automation_executed", onAutomationExecuted);
         };
     }, [socket, qc, pulseDeal]);
 

@@ -282,6 +282,7 @@ model Organization {
   timeline         TimelineEvent[]
   auditLogs        AuditLog[]
   automationLogs   AutomationLog[]
+  stageAutomationLogs StageAutomationLog[]
   knowledgeBases   KnowledgeBase[]
   aiAgents         AIAgent[]
   aiInsights       AIInsight[]
@@ -527,6 +528,7 @@ model PipelineStage {
   deals          Deal[]
   fromMovements  DealStageMovement[] @relation("FromStage")
   toMovements    DealStageMovement[] @relation("ToStage")
+  automationLogs StageAutomationLog[]
 
   @@index([pipelineId, order])
   @@map("pipeline_stages")
@@ -591,6 +593,7 @@ model Deal {
   activities     Activity[]
   payments       Payment[]
   automationLogs AutomationLog[]
+  stageAutomationLogs StageAutomationLog[]
   stageMovements DealStageMovement[]
 
   @@index([orgId, pipelineId, stageId])
@@ -853,6 +856,29 @@ model AutomationLog {
   @@index([contactId])
   @@index([orgId])
   @@map("automation_logs")
+}
+
+model StageAutomationLog {
+  id              String              @id @default(cuid())
+  dealId          String
+  stageId         String
+  orgId           String
+  ruleId          String
+  ruleName        String
+  trigger         String              // "enter" | "exit" | "rotting"
+  status          AutomationLogStatus
+  executedActions Json                @default("[]")
+  error           String?
+  createdAt       DateTime            @default(now())
+
+  deal  Deal          @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  stage PipelineStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  org   Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([dealId, createdAt])
+  @@index([stageId, createdAt])
+  @@index([orgId, createdAt])
+  @@map("stage_automation_logs")
 }
 
 // =============================================================================

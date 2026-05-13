@@ -1,5 +1,7 @@
-// @ts-ignore — pdf-parse ships a default export but types may differ
-import pdfParse from "pdf-parse/lib/pdf-parse.js";
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
+// pdf-parse is CJS-only — must be loaded via require in ESM context
+const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<{ text: string; numpages: number }>;
 
 /**
  * Extracts clean text from a PDF buffer.

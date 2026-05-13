@@ -32,10 +32,18 @@ api.interceptors.response.use(
     (response) => response,
     async (error: AxiosError) => {
         if (error.response?.status === 401) {
-            // Clear stored tokens and redirect to login
             if (typeof window !== "undefined") {
+                // Wipe both the raw token and the persisted Zustand auth store
+                // (otherwise the login page redirects right back to "/" and loops).
                 localStorage.removeItem("crm:access_token");
-                window.location.href = "/login";
+                localStorage.removeItem("crm:auth");
+                document.cookie = "crm:access_token=; Max-Age=0; path=/";
+
+                // Avoid bouncing to /login if we are already there — that would
+                // cause the page to reload in a loop while the user is typing.
+                if (!window.location.pathname.startsWith("/login")) {
+                    window.location.href = "/login";
+                }
             }
         }
         return Promise.reject(error);

@@ -13,7 +13,12 @@ function usePayments() {
         queryKey: ["payments"],
         queryFn: async () => {
             const res = await api.get("/payments");
-            return res.data;
+            const payments = (res.data.data ?? []).map((payment: any) => ({
+                ...payment,
+                status: payment.status?.toLowerCase(),
+                dueDate: payment.dueDate ?? payment.dueAt,
+            }));
+            return { ...res.data, payments };
         },
     });
 }

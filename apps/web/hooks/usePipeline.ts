@@ -2,6 +2,11 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import type {
+    StageAutomationRule,
+    StageRequiredField,
+    StageAutomationLogEntry,
+} from "@crm-base/shared";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -167,7 +172,16 @@ export function usePipeline(id: string) {
         queryKey: ["pipelines", id, "kanban"],
         queryFn: async () => {
             const { data } = await api.get(`/pipeline/pipelines/${id}/kanban`);
-            return data as Pipeline;
+            // API returns { pipeline, columns: [{stage, deals}] } — transform to Pipeline shape
+            const result = data as {
+                pipeline: PipelineSummary & Record<string, unknown>;
+                columns: Array<{ stage: PipelineStage; deals: PipelineDeal[] }>;
+            };
+            return {
+                ...result.pipeline,
+                stages: result.columns.map((c) => c.stage),
+                deals: result.columns.flatMap((c) => c.deals),
+            } as Pipeline;
         },
         enabled: !!id,
     });
@@ -355,9 +369,10 @@ export function useUpdateStage(stageId: string, pipelineId: string) {
             agentId: string | null;
             agentTrigger: string;
             agentGoal: string;
-            onEnterActions: unknown[];
-            onRottingActions: unknown[];
-            requiredFields: string[];
+            onEnterActions: StageAutomationRule[];
+            onExitActions: StageAutomationRule[];
+            onRottingActions: StageAutomationRule[];
+            requiredFields: StageRequiredField[];
         }>) => {
             const { data } = await api.patch(
                 `/pipeline/pipelines/${pipelineId}/stages/${stageId}`,
@@ -367,6 +382,145 @@ export function useUpdateStage(stageId: string, pipelineId: string) {
         },
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["pipelines"] });
+        },
+    });
+}
+
+// ── Stage CRUD + Automations ──────────────────────────────────────────────────
+
+export function useCreateStage(pipelineId: string) {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: async (payload: {
+            name: string;
+            color?: string;
+            type?: string;
+            probability?: number;
+            rottingDays?: number | null;
+            maxDeals?: number | null;
+            order?: number;
+            onEnterActions?: StageAutomationRule[];
+            onExitActions?: StageAutomationRule[];
+            onRottingActions?: StageAutomationRule[];
+            requiredFields?: StageRequiredField[];
+        }) => {
+            const { data } = await api.post(
+                `/pipeline/pipelines/${pipelineId}/stages`,
+                payload,
+            );
+            return data as PipelineStage;
+        },
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ["pipelines"] });
+        },
+    });
+}
+
+export function useDeleteStage(pipelineId: string) {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: async ({
+            stageId,
+            targetStageId,
+        }: {
+            stageId: string;
+            targetStageId?: string;
+        }) => {
+            await api.delete(
+                `/pipeline/pipelines/${pipelineId}/stages/${stageId}`,
+                { data: targetStageId ? { targetStageId } : {} },
+            );
+        },
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ["pipelines"] });
+        },
+    });
+}
+
+export function useReorderStages(pipelineId: string) {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: async (stages: Array<{ id: string; order: number }>) => {
+            const { data } = await api.patch(
+                `/pipeline/pipelines/${pipelineId}/stages/reorder`,
+                { stages },
+            );
+            return data as PipelineStage[];
+        },
+        onMutate: async (stages) => {
+            await qc.cancelQueries({ queryKey: ["pipelines", pipelineId, "kanban"] });
+            const previous = qc.getQueryData<Pipeline>(["pipelines", pipelineId, "kanban"]);
+            if (previous) {
+                const orderMap = new Map(stages.map((s) => [s.id, s.order]));
+                qc.setQueryData<Pipeline>(["pipelines", pipelineId, "kanban"], {
+                    ...previous,
+                    stages: [...previous.stages]
+                        .map((s) => ({ ...s, order: orderMap.get(s.id) ?? s.order }))
+                        .sort((a, b) => a.order - b.order),
+                });
+            }
+            return { previous };
+        },
+        onError: (_err, _vars, ctx) => {
+            if (ctx?.previous) {
+                qc.setQueryData(["pipelines", pipelineId, "kanban"], ctx.previous);
+            }
+        },
+        onSettled: () => {
+            qc.invalidateQueries({ queryKey: ["pipelines"] });
+        },
+    });
+}
+
+export function useDealAutomationLogs(dealId: string) {
+    return useQuery({
+        queryKey: ["deals", dealId, "automation-logs"],
+        queryFn: async () => {
+            const { data } = await api.get(`/pipeline/deals/${dealId}/automation-logs`);
+            return data as StageAutomationLogEntry[];
+        },
+        enabled: !!dealId,
+    });
+}
+
+export function useStageAutomationLogs(pipelineId: string, stageId: string) {
+    return useQuery({
+        queryKey: ["pipelines", pipelineId, "stages", stageId, "automation-logs"],
+        queryFn: async () => {
+            const { data } = await api.get(
+                `/pipeline/pipelines/${pipelineId}/stages/${stageId}/automation-logs`,
+            );
+            return data as StageAutomationLogEntry[];
+        },
+        enabled: !!pipelineId && !!stageId,
+    });
+}
+
+export function useTestStageAutomation(pipelineId: string, stageId: string) {
+    return useMutation({
+        mutationFn: async (payload: {
+            trigger: "enter" | "exit" | "rotting";
+            dealId: string;
+            ruleId?: string;
+        }) => {
+            const { data } = await api.post(
+                `/pipeline/pipelines/${pipelineId}/stages/${stageId}/automation-test`,
+                payload,
+            );
+            return data as {
+                trigger: string;
+                stageId: string;
+                executed: Array<{
+                    ruleId: string;
+                    ruleName: string;
+                    results: Array<{
+                        actionType: string;
+                        success: boolean;
+                        output?: unknown;
+                        error?: string;
+                    }>;
+                }>;
+            };
         },
     });
 }

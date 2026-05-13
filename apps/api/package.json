@@ -15,7 +15,18 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "db:seed-s01": "npx tsx prisma/seeds/s01-foundation.ts",
+    "db:seed-s02": "npx tsx prisma/seeds/s02-knowledge.ts",
+    "db:seed-s03": "npx tsx prisma/seeds/s03-agents.ts",
+    "db:seed-s04": "npx tsx prisma/seeds/s04-pipelines.ts",
+    "db:seed-s05": "npx tsx prisma/seeds/s05-contacts.ts",
+    "db:seed-s06": "npx tsx prisma/seeds/s06-deals.ts",
+    "db:seed-s07": "npx tsx prisma/seeds/s07-conversations.ts",
+    "db:seed-s08": "npx tsx prisma/seeds/s08-payments-insights.ts",
+    "db:seed-s09": "npx tsx prisma/seeds/s09-activities-audit.ts",
+    "db:demo": "npx tsx prisma/seeds/run-demo.ts",
+    "db:reset-demo": "npx prisma migrate reset --force && npx tsx prisma/seed.ts && npx tsx prisma/seeds/run-demo.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

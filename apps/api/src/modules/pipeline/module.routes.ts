@@ -8,6 +8,8 @@ import {
     UpdateStageSchema,
     ReorderStagesSchema,
     AssignAgentToStageSchema,
+    RemoveStageBodySchema,
+    TestStageAutomationSchema,
     CreateDealSchema,
     UpdateDealSchema,
     MoveDealSchema,
@@ -220,12 +222,44 @@ export const pipelineRoutes: FastifyPluginAsync = async (fastify) => {
         "/pipelines/:id/stages/:stageId",
         {
             onRequest: [fastify.verifyJWT, requireRole("MANAGER")],
-            schema: { params: StageParams },
+            schema: { params: StageParams, body: RemoveStageBodySchema.optional() },
         },
         async (request, reply) => {
             const { id, stageId } = request.params as { id: string; stageId: string };
-            await service.removeStage(stageId, id, request.user.orgId!);
+            const body = (request.body ?? {}) as { targetStageId?: string };
+            await service.removeStage(stageId, id, request.user.orgId!, body.targetStageId);
             return reply.code(204).send();
+        },
+    );
+
+    // GET /pipeline/pipelines/:id/stages/:stageId/automation-logs
+    fastify.get(
+        "/pipelines/:id/stages/:stageId/automation-logs",
+        {
+            onRequest: [fastify.verifyJWT, requireRole("MANAGER")],
+            schema: { params: StageParams },
+        },
+        async (request) => {
+            const { id, stageId } = request.params as { id: string; stageId: string };
+            return service.getStageAutomationLogs(stageId, id, request.user.orgId!);
+        },
+    );
+
+    // POST /pipeline/pipelines/:id/stages/:stageId/automation-test (dry-run)
+    fastify.post(
+        "/pipelines/:id/stages/:stageId/automation-test",
+        {
+            onRequest: [fastify.verifyJWT, requireRole("MANAGER")],
+            schema: { params: StageParams, body: TestStageAutomationSchema },
+        },
+        async (request) => {
+            const { id, stageId } = request.params as { id: string; stageId: string };
+            return service.testStageAutomation(
+                stageId,
+                id,
+                request.body as { trigger: "enter" | "exit" | "rotting"; dealId: string; ruleId?: string },
+                request.user.orgId!,
+            );
         },
     );
 
@@ -298,6 +332,20 @@ export const pipelineRoutes: FastifyPluginAsync = async (fastify) => {
             const { id } = request.params as { id: string };
             const user = request.user;
             return service.findDealById(id, user.orgId!, user.id!, user.role!);
+        },
+    );
+
+    // GET /pipeline/deals/:id/automation-logs
+    fastify.get(
+        "/deals/:id/automation-logs",
+        {
+            onRequest: [fastify.verifyJWT],
+            schema: { params: IdParams },
+        },
+        async (request) => {
+            const { id } = request.params as { id: string };
+            const user = request.user;
+            return service.getDealAutomationLogs(id, user.orgId!, user.id!, user.role!);
         },
     );
 

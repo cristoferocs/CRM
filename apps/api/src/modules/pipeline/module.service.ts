@@ -256,16 +256,26 @@ export class PipelineService {
     async createStage(pipelineId: string, data: CreateStageInput, orgId: string) {
         const pipeline = await this.repo.findPipelineById(pipelineId, orgId);
         if (!pipeline) notFound("Pipeline");
-        return this.repo.createStage(pipelineId, data);
+        const stage = await this.repo.createStage(pipelineId, data);
+        getIO()?.to(`org:${orgId}`).emit("pipeline:stage_created", {
+            pipelineId,
+            stage,
+        });
+        return stage;
     }
 
     async updateStage(stageId: string, pipelineId: string, data: UpdateStageInput, orgId: string) {
         const stage = await this.repo.findStageById(stageId, orgId);
         if (!stage || stage.pipelineId !== pipelineId) notFound("Stage");
-        return this.repo.updateStage(stageId, pipelineId, data);
+        const updated = await this.repo.updateStage(stageId, pipelineId, data);
+        getIO()?.to(`org:${orgId}`).emit("pipeline:stage_updated", {
+            pipelineId,
+            stage: updated,
+        });
+        return updated;
     }
 
-    async removeStage(stageId: string, pipelineId: string, orgId: string) {
+    async removeStage(stageId: string, pipelineId: string, orgId: string, targetStageId?: string) {
         const stage = await this.repo.findStageById(stageId, orgId);
         if (!stage || stage.pipelineId !== pipelineId) notFound("Stage");
 
@@ -278,11 +288,13 @@ export class PipelineService {
             unprocessable("Não é possível remover a única etapa de 'Perdido'. Crie outra etapa de Perdido antes.");
         }
 
-        // Move deals to the first non-terminal stage before deleting
-        // (This prevents orphan deals — in practice the UI should handle this, but we guard here)
-        const fallback = stages.find((s) => s.id !== stageId && !s.isWon && !s.isLost);
+        // Resolve target — explicit override has priority, otherwise auto-pick first non-terminal
+        let fallback = targetStageId
+            ? stages.find((s) => s.id === targetStageId && s.id !== stageId)
+            : stages.find((s) => s.id !== stageId && !s.isWon && !s.isLost);
+
         if (!fallback) {
-            unprocessable("Não há etapa de destino para mover os deals. Adicione outra etapa antes de remover esta.");
+            unprocessable("Não há etapa de destino válida para mover os deals. Informe uma etapa existente do mesmo pipeline.");
         }
 
         // Prisma cascade on delete will handle deals, but better to move them
@@ -291,17 +303,28 @@ export class PipelineService {
             const { prisma } = await import("../../lib/prisma.js");
             await prisma.deal.updateMany({
                 where: { stageId, pipelineId, isActive: true },
-                data: { stageId: fallback.id },
+                data: { stageId: fallback!.id },
             });
             await prisma.pipelineStage.delete({ where: { id: stageId } });
         })();
+
+        getIO()?.to(`org:${orgId}`).emit("pipeline:stage_deleted", {
+            pipelineId,
+            stageId,
+            targetStageId: fallback!.id,
+        });
     }
 
     async reorderStages(pipelineId: string, data: ReorderStagesInput, orgId: string) {
         const pipeline = await this.repo.findPipelineById(pipelineId, orgId);
         if (!pipeline) notFound("Pipeline");
         await this.repo.reorderStages(data.stages);
-        return this.repo.findStagesByPipeline(pipelineId, orgId);
+        const stages = await this.repo.findStagesByPipeline(pipelineId, orgId);
+        getIO()?.to(`org:${orgId}`).emit("pipeline:stages_reordered", {
+            pipelineId,
+            stages: stages.map((s) => ({ id: s.id, order: s.order })),
+        });
+        return stages;
     }
 
     async assignAgentToStage(stageId: string, data: AssignAgentToStageInput, orgId: string) {
@@ -451,17 +474,26 @@ export class PipelineService {
         // Check requiredFields and emit warning if missing (non-blocking)
         const missingFields = this.checkRequiredFields(toStage.requiredFields as unknown[], deal.customFields as Record<string, unknown>);
 
-        // Enqueue onEnterActions via BullMQ
-        const enterActions = toStage.onEnterActions as unknown[];
-        if (enterActions.length > 0) {
-            queues.automations().add("stage.enter", {
+        // Enqueue onExitActions for the stage we just left
+        if (deal.stageId && deal.stageId !== toStage.id) {
+            queues.automations().add("stage.exit", {
                 dealId: id,
                 orgId,
-                stageId: toStage.id,
-                stageName: toStage.name,
-                actions: enterActions,
+                stageId: deal.stageId,
+                trigger: "exit",
+                hops: 0,
             }).catch(() => null);
         }
+
+        // Enqueue onEnterActions via BullMQ (worker loads rules from DB)
+        queues.automations().add("stage.enter", {
+            dealId: id,
+            orgId,
+            stageId: toStage.id,
+            stageName: toStage.name,
+            trigger: "enter",
+            hops: 0,
+        }).catch(() => null);
 
         // Auto-trigger agent via bridge if configured
         if (toStage.agentId && toStage.agentTrigger === "AUTO_ENTER") {
@@ -632,7 +664,8 @@ export class PipelineService {
                     dealId: r.dealId,
                     orgId,
                     stageId: stage.id,
-                    actions: rottingActions,
+                    trigger: "rotting",
+                    hops: 0,
                 }).catch(() => null);
             }
         }
@@ -787,5 +820,72 @@ export class PipelineService {
             return;
         }
         if (deal.ownerId !== userId) forbidden();
+    }
+
+    // =========================================================================
+    // STAGE AUTOMATION LOGS & DRY-RUN
+    // =========================================================================
+
+    async getDealAutomationLogs(dealId: string, orgId: string, userId: string, role: string) {
+        const deal = await this.repo.findDealById(dealId, orgId);
+        if (!deal) notFound("Deal");
+        await this.assertDealAccess(deal, orgId, userId, role);
+        const { prisma } = await import("../../lib/prisma.js");
+        return prisma.stageAutomationLog.findMany({
+            where: { dealId, orgId },
+            orderBy: { createdAt: "desc" },
+            take: 100,
+        });
+    }
+
+    async getStageAutomationLogs(stageId: string, pipelineId: string, orgId: string) {
+        const stage = await this.repo.findStageById(stageId, orgId);
+        if (!stage || stage.pipelineId !== pipelineId) notFound("Stage");
+        const { prisma } = await import("../../lib/prisma.js");
+        return prisma.stageAutomationLog.findMany({
+            where: { stageId, orgId },
+            orderBy: { createdAt: "desc" },
+            take: 200,
+        });
+    }
+
+    async testStageAutomation(
+        stageId: string,
+        pipelineId: string,
+        body: { trigger: "enter" | "exit" | "rotting"; dealId: string; ruleId?: string },
+        orgId: string,
+    ) {
+        const stage = await this.repo.findStageById(stageId, orgId);
+        if (!stage || stage.pipelineId !== pipelineId) notFound("Stage");
+        const deal = await this.repo.findDealById(body.dealId, orgId);
+        if (!deal) notFound("Deal");
+
+        const { StageRulesArraySchema } = await import("./stage-automation.schema.js");
+        const { runStageAutomationRule } = await import("../automations/stage-automation.executor.js");
+
+        const column =
+            body.trigger === "enter"
+                ? stage.onEnterActions
+                : body.trigger === "exit"
+                    ? stage.onExitActions
+                    : stage.onRottingActions;
+
+        const rules = StageRulesArraySchema.parse(column);
+        const out: Array<{ ruleId: string; ruleName: string; results: unknown }> = [];
+
+        for (const rule of rules) {
+            if (body.ruleId && rule.id !== body.ruleId) continue;
+            const results = await runStageAutomationRule(rule, {
+                dealId: body.dealId,
+                orgId,
+                stageId,
+                trigger: body.trigger,
+                hops: 0,
+                dryRun: true,
+            });
+            out.push({ ruleId: rule.id, ruleName: rule.name, results });
+        }
+
+        return { trigger: body.trigger, stageId, executed: out };
     }
 }

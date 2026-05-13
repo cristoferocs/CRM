@@ -21,6 +21,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import { useUpdateStage } from "@/hooks/usePipeline";
 import type { PipelineStage } from "@/hooks/usePipeline";
+import type { StageAutomationRule, StageRequiredField } from "@crm-base/shared";
+import {
+    AutomationRulesEditor,
+    parseRulesArray,
+} from "./automations/automation-rules-editor";
 
 // ── Stage type options ─────────────────────────────────────────────────────────
 
@@ -70,8 +75,20 @@ export function StageConfigModal({ stage, pipelineId, open, onOpenChange }: Stag
         agentTrigger: stage?.agentTrigger ?? "NONE",
         agentGoal: stage?.agentGoal ?? "",
         maxDeals: stage?.maxDeals ?? "",
-        requiredFields: (stage?.requiredFields as string[]) ?? [],
+        requiredFields: ((stage?.requiredFields as unknown[]) ?? []).map((f) => {
+            if (typeof f === "string") return { key: f, label: f, type: "text" as const };
+            const r = f as Partial<StageRequiredField>;
+            return {
+                key: r.key ?? "",
+                label: r.label ?? r.key ?? "",
+                type: r.type ?? "text",
+                options: r.options,
+            } as StageRequiredField;
+        }),
         newField: "",
+        onEnterActions: parseRulesArray(stage?.onEnterActions),
+        onExitActions: parseRulesArray(stage?.onExitActions),
+        onRottingActions: parseRulesArray(stage?.onRottingActions),
     }));
 
     const updateStage = useUpdateStage(stage?.id ?? "", pipelineId);
@@ -102,6 +119,9 @@ export function StageConfigModal({ stage, pipelineId, open, onOpenChange }: Stag
                 agentGoal: form.agentGoal || undefined,
                 maxDeals: form.maxDeals ? Number(form.maxDeals) : undefined,
                 requiredFields: form.requiredFields,
+                onEnterActions: form.onEnterActions,
+                onExitActions: form.onExitActions,
+                onRottingActions: form.onRottingActions,
             });
             toast.success("Etapa atualizada");
             onOpenChange(false);
@@ -112,7 +132,7 @@ export function StageConfigModal({ stage, pipelineId, open, onOpenChange }: Stag
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-lg">
+            <DialogContent className="max-w-2xl">
                 <DialogHeader>
                     <DialogTitle>Configurar etapa</DialogTitle>
                 </DialogHeader>
@@ -258,17 +278,21 @@ export function StageConfigModal({ stage, pipelineId, open, onOpenChange }: Stag
                     </TabsContent>
 
                     {/* ── AUTOMATIONS ────────────────────────────────────── */}
-                    <TabsContent value="automations" className="space-y-4">
+                    <TabsContent value="automations" className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
                         <div className="space-y-2">
                             <Label className="text-xs text-t2">Campos obrigatórios para sair</Label>
                             <div className="flex gap-2">
                                 <Input
-                                    placeholder="Nome do campo..."
+                                    placeholder="Nome do campo (ex.: budget)"
                                     value={form.newField}
                                     onChange={(e) => set("newField", e.target.value)}
                                     onKeyDown={(e) => {
                                         if (e.key === "Enter" && form.newField.trim()) {
-                                            set("requiredFields", [...form.requiredFields, form.newField.trim()]);
+                                            const key = form.newField.trim();
+                                            set("requiredFields", [
+                                                ...form.requiredFields,
+                                                { key, label: key, type: "text" } as StageRequiredField,
+                                            ]);
                                             set("newField", "");
                                         }
                                     }}
@@ -279,7 +303,11 @@ export function StageConfigModal({ stage, pipelineId, open, onOpenChange }: Stag
                                     size="sm"
                                     onClick={() => {
                                         if (form.newField.trim()) {
-                                            set("requiredFields", [...form.requiredFields, form.newField.trim()]);
+                                            const key = form.newField.trim();
+                                            set("requiredFields", [
+                                                ...form.requiredFields,
+                                                { key, label: key, type: "text" } as StageRequiredField,
+                                            ]);
                                             set("newField", "");
                                         }
                                     }}
@@ -288,13 +316,42 @@ export function StageConfigModal({ stage, pipelineId, open, onOpenChange }: Stag
                                 </Button>
                             </div>
                             {form.requiredFields.length > 0 && (
-                                <div className="flex flex-wrap gap-1.5">
+                                <div className="space-y-1.5">
                                     {form.requiredFields.map((f, i) => (
-                                        <span
+                                        <div
                                             key={i}
-                                            className="flex items-center gap-1 rounded-[6px] bg-surface-3 px-2 py-1 font-mono text-[11px] text-t2"
+                                            className="flex items-center gap-2 rounded-[6px] bg-surface-3 px-2 py-1.5"
                                         >
-                                            {f}
+                                            <Input
+                                                value={f.label}
+                                                onChange={(e) => {
+                                                    const arr = [...form.requiredFields];
+                                                    arr[i] = { ...arr[i]!, label: e.target.value };
+                                                    set("requiredFields", arr);
+                                                }}
+                                                placeholder="Rótulo"
+                                                className="h-6 text-[11px] flex-1"
+                                            />
+                                            <code className="font-mono text-[10px] text-t3">{f.key}</code>
+                                            <Select
+                                                value={f.type}
+                                                onValueChange={(v) => {
+                                                    const arr = [...form.requiredFields];
+                                                    arr[i] = { ...arr[i]!, type: v as StageRequiredField["type"] };
+                                                    set("requiredFields", arr);
+                                                }}
+                                            >
+                                                <SelectTrigger className="h-6 w-24 text-[10px]">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="text">Texto</SelectItem>
+                                                    <SelectItem value="number">Número</SelectItem>
+                                                    <SelectItem value="date">Data</SelectItem>
+                                                    <SelectItem value="select">Seleção</SelectItem>
+                                                    <SelectItem value="boolean">Sim/Não</SelectItem>
+                                                </SelectContent>
+                                            </Select>
                                             <button
                                                 onClick={() =>
                                                     set(
@@ -306,16 +363,29 @@ export function StageConfigModal({ stage, pipelineId, open, onOpenChange }: Stag
                                             >
                                                 <X className="h-3 w-3" />
                                             </button>
-                                        </span>
+                                        </div>
                                     ))}
                                 </div>
                             )}
                         </div>
 
-                        <div className="rounded-[10px] border border-[var(--rim)] bg-surface-3 px-4 py-3">
-                            <p className="text-xs text-t3">
-                                Automações avançadas (ao entrar, ao sair, ao apodrecer) estarão disponíveis em breve.
-                            </p>
+                        <div className="border-t border-[var(--rim)] pt-3">
+                            <Label className="text-xs text-t2 mb-2 block">Regras de automação</Label>
+                            <AutomationRulesEditor
+                                value={{
+                                    onEnterActions: form.onEnterActions,
+                                    onExitActions: form.onExitActions,
+                                    onRottingActions: form.onRottingActions,
+                                }}
+                                onChange={(next) => {
+                                    setForm((f) => ({
+                                        ...f,
+                                        onEnterActions: next.onEnterActions,
+                                        onExitActions: next.onExitActions,
+                                        onRottingActions: next.onRottingActions,
+                                    }));
+                                }}
+                            />
                         </div>
                     </TabsContent>
 

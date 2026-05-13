@@ -36,12 +36,70 @@ export interface InboxFilters {
     limit?: number;
 }
 
+type ApiConversation = Omit<Conversation, "status" | "channel" | "assignedToId" | "lastMessage"> & {
+    status: string;
+    channel: string;
+    agentId?: string | null;
+    assignedToId?: string | null;
+    lastMessage?: string | null;
+    messages?: Array<{ content: string; sentAt?: string; direction?: string; type?: string; id: string; mediaUrl?: string | null }>;
+};
+
+type ApiMessage = Omit<Message, "type" | "sender" | "createdAt"> & {
+    type: string;
+    direction?: string;
+    sender?: unknown;
+    sentAt?: string;
+    createdAt?: string;
+};
+
+function toApiFilters(filters: InboxFilters) {
+    return {
+        ...filters,
+        status: filters.status?.toUpperCase(),
+        channel: filters.channel?.toUpperCase(),
+        agentId: filters.assignedToId,
+        assignedToId: undefined,
+    };
+}
+
+function normalizeMessage(message: ApiMessage): Message {
+    return {
+        ...message,
+        type: message.type.toLowerCase() as Message["type"],
+        sender: message.direction === "OUTBOUND" ? "agent" : "contact",
+        senderId: typeof message.sender === "object" && message.sender && "id" in message.sender
+            ? String(message.sender.id)
+            : message.senderId,
+        createdAt: message.createdAt ?? message.sentAt ?? new Date().toISOString(),
+    };
+}
+
+function normalizeConversation(conversation: ApiConversation): Conversation {
+    const lastMessage = conversation.lastMessage ?? conversation.messages?.[0]?.content ?? null;
+    return {
+        ...conversation,
+        status: conversation.status.toLowerCase() as Conversation["status"],
+        channel: conversation.channel.toLowerCase() as Conversation["channel"],
+        assignedToId: conversation.assignedToId ?? conversation.agentId ?? null,
+        lastMessage,
+        lastMessageAt: conversation.lastMessageAt ?? conversation.messages?.[0]?.sentAt ?? null,
+    };
+}
+
 export function useConversations(filters: InboxFilters = {}) {
     return useQuery({
         queryKey: ["inbox", filters],
         queryFn: async () => {
-            const { data } = await api.get("/inbox/conversations", { params: filters });
-            return data as { conversations: Conversation[]; total: number };
+            const { data } = await api.get("/inbox/conversations", { params: toApiFilters(filters) });
+            const conversations = (data.data ?? []).map(normalizeConversation);
+            return {
+                conversations,
+                total: data.total ?? conversations.length,
+                page: data.page,
+                limit: data.limit,
+                totalPages: data.totalPages,
+            } as { conversations: Conversation[]; total: number; page?: number; limit?: number; totalPages?: number };
         },
     });
 }
@@ -51,7 +109,9 @@ export function useConversation(id: string) {
         queryKey: ["inbox", id],
         queryFn: async () => {
             const { data } = await api.get(`/inbox/conversations/${id}`);
-            return data as Conversation & { messages: Message[] };
+            const conversation = normalizeConversation(data);
+            const messages = (data.messages ?? []).slice().reverse().map(normalizeMessage);
+            return { ...conversation, messages } as Conversation & { messages: Message[] };
         },
         enabled: !!id,
         refetchInterval: 5_000,
@@ -98,7 +158,7 @@ export function useResolveConversation() {
     const qc = useQueryClient();
     return useMutation({
         mutationFn: async (conversationId: string) => {
-            const { data } = await api.patch(`/inbox/conversations/${conversationId}/status`, { status: "resolved" });
+            const { data } = await api.patch(`/inbox/conversations/${conversationId}/status`, { status: "RESOLVED" });
             return data;
         },
         onSuccess: () => {
