@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { usePipelines } from "@/hooks/usePipeline";
+import { usePipelines, usePipeline } from "@/hooks/usePipeline";
 import { cn } from "@/lib/utils";
 
 const STAGE_COLORS = [
@@ -20,8 +20,10 @@ const STAGE_COLORS = [
 ];
 
 export default function PipelineSettingsPage() {
-    const { data: pipelines, isLoading } = usePipelines();
-    const pipeline = pipelines?.[0];
+    const { data: pipelines, isLoading: pipelinesLoading } = usePipelines();
+    const firstId = pipelines?.[0]?.id ?? "";
+    const { data: pipeline, isLoading: pipelineLoading } = usePipeline(firstId);
+    const isLoading = pipelinesLoading || pipelineLoading;
 
     return (
         <div className="space-y-6 animate-fade-in">

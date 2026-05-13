@@ -22,6 +22,7 @@ import * as qualifyLead from "./qualify-lead.tool.js";
 import * as sendMessageTemplate from "./send-message-template.tool.js";
 import * as createFollowUpTask from "./create-follow-up-task.tool.js";
 import * as checkObjectionResponse from "./check-objection-response.tool.js";
+import { PIPELINE_TOOLS } from "./pipeline-tools.js";
 import { z } from "zod";
 import { toolRegistry, type AgentTool, type ToolContext, type ToolResult } from "../tool-registry.js";
 
@@ -123,6 +124,7 @@ const NATIVE_TOOLS: AgentTool[] = [
     sendMessageTemplate,
     createFollowUpTask,
     checkObjectionResponse,
+    ...PIPELINE_TOOLS,
 ];
 
 const ALL_TOOLS: AgentTool[] = [...LEGACY_TOOLS, ...NATIVE_TOOLS];

@@ -30,6 +30,7 @@ import { createAutomationWorker } from "./queue/workers/automation.worker.js";
 import { createInboxWorker } from "./queue/workers/inbox.worker.js";
 import { createKnowledgeWorker } from "./queue/workers/knowledge.worker.js";
 import { createFlowLearningWorker } from "./modules/ai/agents/learning/learning.worker.js";
+import { createAgentProactiveWorker } from "./queue/workers/agent-proactive.worker.js";
 import { initializeSocket } from "./websocket/socket.js";
 
 const app = Fastify({
@@ -85,6 +86,7 @@ const automationWorker = createAutomationWorker();
 const inboxWorker = createInboxWorker();
 const knowledgeWorker = createKnowledgeWorker();
 const learningWorker = createFlowLearningWorker();
+const agentProactiveWorker = createAgentProactiveWorker();
 
 const shutdown = async (signal: NodeJS.Signals) => {
   app.log.info({ signal }, "shutting down api");
@@ -95,6 +97,7 @@ const shutdown = async (signal: NodeJS.Signals) => {
     await inboxWorker.close();
     await knowledgeWorker.close();
     await learningWorker.close();
+    await agentProactiveWorker.close();
     await closeQueues();
     await app.close();
     process.exit(0);

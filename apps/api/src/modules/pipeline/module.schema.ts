@@ -1,60 +1,138 @@
 import { z } from "zod";
 
 // ---------------------------------------------------------------------------
-// Stage
+// Enums (mirror Prisma enums for input validation)
 // ---------------------------------------------------------------------------
 
-export const PipelineStageInputSchema = z.object({
-    name: z.string().min(1).max(100),
-    order: z.number().int().min(0),
-    color: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#6366f1"),
-    probability: z.number().int().min(0).max(100).default(0),
-    isWon: z.boolean().default(false),
-    isLost: z.boolean().default(false),
-});
+export const PipelineTypeSchema = z.enum([
+    "SALES",
+    "PRODUCT",
+    "SERVICE",
+    "CAMPAIGN",
+    "PARTNERSHIP",
+    "RENEWAL",
+    "RECRUITMENT",
+    "CUSTOM",
+]);
+
+export const PipelineVisibilitySchema = z.enum(["ALL", "DEPARTMENT", "ROLES"]);
+
+export const StageTypeSchema = z.enum([
+    "REGULAR",
+    "ENTRY",
+    "NURTURING",
+    "DECISION",
+    "WON",
+    "LOST",
+    "ON_HOLD",
+]);
+
+export const StageAgentTriggerSchema = z.enum([
+    "MANUAL",
+    "AUTO_ENTER",
+    "AUTO_ROTTING",
+    "SCHEDULED",
+]);
+
+export const MovedByTypeSchema = z.enum(["HUMAN", "AGENT", "AUTOMATION", "SYSTEM"]);
 
 // ---------------------------------------------------------------------------
-// Pipelines
+// Pipeline
 // ---------------------------------------------------------------------------
 
 export const CreatePipelineSchema = z.object({
     name: z.string().min(1).max(100),
-    stages: z.array(PipelineStageInputSchema).min(1),
+    description: z.string().max(500).optional(),
+    color: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#7c5cfc"),
+    icon: z.string().max(50).optional(),
+    type: PipelineTypeSchema,
+    context: z.record(z.string(), z.unknown()).optional(),
+    tags: z.array(z.string()).default([]),
+    isDefault: z.boolean().default(false),
+    rotting: z.boolean().default(true),
+    rottingDays: z.number().int().min(1).max(365).default(7),
+    currency: z.string().length(3).default("BRL"),
+    winProbabilityAuto: z.boolean().default(true),
+    customFieldSchema: z.array(z.record(z.string(), z.unknown())).default([]),
+    visibility: PipelineVisibilitySchema.default("ALL"),
+    allowedRoles: z.array(z.string()).default([]),
 });
 
-export const UpdatePipelineSchema = z.object({
-    name: z.string().min(1).max(100).optional(),
-    stages: z.array(PipelineStageInputSchema).min(1).optional(),
+export const UpdatePipelineSchema = CreatePipelineSchema.omit({ type: true }).partial();
+
+// ---------------------------------------------------------------------------
+// Stage
+// ---------------------------------------------------------------------------
+
+export const CreateStageSchema = z.object({
+    name: z.string().min(1).max(100),
+    description: z.string().max(500).optional(),
+    order: z.number().int().min(0),
+    color: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#7c5cfc"),
+    type: StageTypeSchema.default("REGULAR"),
+    probability: z.number().int().min(0).max(100).default(0),
+    rottingDays: z.number().int().min(1).optional(),
+    maxDeals: z.number().int().min(1).optional(),
+    onEnterActions: z.array(z.record(z.string(), z.unknown())).default([]),
+    onExitActions: z.array(z.record(z.string(), z.unknown())).default([]),
+    onRottingActions: z.array(z.record(z.string(), z.unknown())).default([]),
+    requiredFields: z.array(z.record(z.string(), z.unknown())).default([]),
+    isWon: z.boolean().default(false),
+    isLost: z.boolean().default(false),
+});
+
+export const UpdateStageSchema = CreateStageSchema.partial();
+
+export const ReorderStagesSchema = z.object({
+    stages: z
+        .array(z.object({ id: z.string(), order: z.number().int().min(0) }))
+        .min(1),
+});
+
+export const AssignAgentToStageSchema = z.object({
+    agentId: z.string(),
+    trigger: StageAgentTriggerSchema.default("MANUAL"),
+    goal: z.string().max(1000).optional(),
 });
 
 // ---------------------------------------------------------------------------
-// Deals
+// Deal
 // ---------------------------------------------------------------------------
 
 export const CreateDealSchema = z.object({
     title: z.string().min(1).max(200),
-    value: z.number().positive().optional(),
+    value: z.number().min(0).default(0),
     currency: z.string().length(3).default("BRL"),
-    stageId: z.string(),
     pipelineId: z.string(),
+    stageId: z.string(),
     contactId: z.string(),
     ownerId: z.string().optional(),
     expectedCloseAt: z.string().datetime().optional(),
+    probability: z.number().int().min(0).max(100).default(0),
     customFields: z.record(z.string(), z.unknown()).default({}),
+    utmSource: z.string().max(200).optional(),
+    utmCampaign: z.string().max(200).optional(),
+    adId: z.string().max(200).optional(),
 });
 
 export const UpdateDealSchema = z.object({
     title: z.string().min(1).max(200).optional(),
-    value: z.number().positive().nullable().optional(),
+    value: z.number().min(0).nullable().optional(),
     currency: z.string().length(3).optional(),
     ownerId: z.string().optional(),
     expectedCloseAt: z.string().datetime().nullable().optional(),
+    probability: z.number().int().min(0).max(100).optional(),
     customFields: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const MoveDealSchema = z.object({
-    stageId: z.string(),
+    toStageId: z.string(),
+    movedBy: MovedByTypeSchema.default("HUMAN"),
+    agentId: z.string().optional(),
+    agentSessionId: z.string().optional(),
     reason: z.string().max(500).optional(),
+    dataCollected: z.record(z.string(), z.unknown()).optional(),
+    triggerEvent: z.string().max(200).optional(),
 });
 
 export const DealFiltersSchema = z.object({
@@ -63,6 +141,8 @@ export const DealFiltersSchema = z.object({
     pipelineId: z.string().optional(),
     ownerId: z.string().optional(),
     contactId: z.string().optional(),
+    isRotting: z.coerce.boolean().optional(),
+    tags: z.string().optional(),
     valueMin: z.coerce.number().optional(),
     valueMax: z.coerce.number().optional(),
     dateFrom: z.string().optional(),
@@ -71,8 +151,25 @@ export const DealFiltersSchema = z.object({
     limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
+export const KanbanFiltersSchema = z.object({
+    ownerId: z.string().optional(),
+    tags: z.string().optional(),
+    valueMin: z.coerce.number().optional(),
+    valueMax: z.coerce.number().optional(),
+    search: z.string().max(200).optional(),
+    isRotting: z.coerce.boolean().optional(),
+});
+
+export const PipelineStatsQuerySchema = z.object({
+    period: z.enum(["week", "month", "quarter", "year"]).default("month"),
+});
+
+export const OverviewQuerySchema = z.object({
+    period: z.enum(["week", "month", "quarter", "year"]).default("month"),
+});
+
 // ---------------------------------------------------------------------------
-// Activities
+// Deal Activity
 // ---------------------------------------------------------------------------
 
 export const CreateDealActivitySchema = z.object({
@@ -83,11 +180,12 @@ export const CreateDealActivitySchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
-// Forecast
+// Agent activation
 // ---------------------------------------------------------------------------
 
-export const ForecastQuerySchema = z.object({
-    period: z.enum(["week", "month", "quarter", "year"]).default("month"),
+export const ActivateAgentSchema = z.object({
+    agentId: z.string().optional(),
+    reason: z.string().max(500).optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -96,9 +194,16 @@ export const ForecastQuerySchema = z.object({
 
 export type CreatePipelineInput = z.infer<typeof CreatePipelineSchema>;
 export type UpdatePipelineInput = z.infer<typeof UpdatePipelineSchema>;
+export type CreateStageInput = z.infer<typeof CreateStageSchema>;
+export type UpdateStageInput = z.infer<typeof UpdateStageSchema>;
+export type ReorderStagesInput = z.infer<typeof ReorderStagesSchema>;
+export type AssignAgentToStageInput = z.infer<typeof AssignAgentToStageSchema>;
 export type CreateDealInput = z.infer<typeof CreateDealSchema>;
 export type UpdateDealInput = z.infer<typeof UpdateDealSchema>;
 export type MoveDealInput = z.infer<typeof MoveDealSchema>;
 export type DealFilters = z.infer<typeof DealFiltersSchema>;
+export type KanbanFilters = z.infer<typeof KanbanFiltersSchema>;
+export type PipelineStatsQuery = z.infer<typeof PipelineStatsQuerySchema>;
+export type OverviewQuery = z.infer<typeof OverviewQuerySchema>;
 export type CreateDealActivityInput = z.infer<typeof CreateDealActivitySchema>;
-export type ForecastQuery = z.infer<typeof ForecastQuerySchema>;
+export type ActivateAgentInput = z.infer<typeof ActivateAgentSchema>;

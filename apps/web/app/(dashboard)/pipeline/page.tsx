@@ -1,530 +1,389 @@
 "use client";
 
-import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Plus, Settings } from "lucide-react";
+import Link from "next/link";
 import { toast } from "sonner";
-import {
-    DragDropContext,
-    Droppable,
-    Draggable,
-    type DropResult,
-} from "@hello-pangea/dnd";
-import { Plus, Loader2, Calendar, DollarSign, User } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogFooter,
-} from "@/components/ui/dialog";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
-import {
-    Sheet,
-    SheetContent,
-    SheetHeader,
-    SheetTitle,
-    SheetDescription,
-} from "@/components/ui/sheet";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
     usePipelines,
     usePipeline,
     useMoveDeal,
     useCreateDeal,
-    type PipelineDeal,
 } from "@/hooks/usePipeline";
-import { useContacts } from "@/hooks/useContacts";
-import { formatCurrency, formatDate, cn } from "@/lib/utils";
+import type { PipelineDeal, PipelineStage } from "@/hooks/usePipeline";
+import { useSocket } from "@/hooks/useSocket";
+import { PipelineSelector } from "@/components/modules/pipeline/pipeline-selector";
+import { FilterBar, DEFAULT_FILTERS } from "@/components/modules/pipeline/filter-bar";
+import type { FilterState } from "@/components/modules/pipeline/filter-bar";
+import { KanbanBoard } from "@/components/modules/pipeline/kanban-board";
+import { ListView } from "@/components/modules/pipeline/list-view";
+import { FunnelView } from "@/components/modules/pipeline/funnel-view";
+import { DealDrawer } from "@/components/modules/pipeline/deal-drawer";
+import { StageConfigModal } from "@/components/modules/pipeline/stage-config-modal";
 
-// ── Deal schema ───────────────────────────────────────────────────────────────
+// ── Constants ──────────────────────────────────────────────────────────────────
 
-const dealSchema = z.object({
-    title: z.string().min(2, "Título obrigatório"),
-    value: z.string().optional(),
-    stageId: z.string().min(1, "Selecione um estágio"),
-    contactId: z.string().optional(),
-    expectedCloseDate: z.string().optional(),
-    probability: z.string().optional(),
-});
+const LS_KEY = "crm:pipeline:selected";
+const PULSE_TTL = 4_000; // ms highlight duration after socket event
 
-type DealFormValues = z.infer<typeof dealSchema>;
+// ── New Deal Dialog ────────────────────────────────────────────────────────────
 
-// ── Stage colors ──────────────────────────────────────────────────────────────
-
-const STAGE_BG_COLORS: Record<number, string> = {
-    0: "bg-violet",
-    1: "bg-cyan",
-    2: "bg-amber",
-    3: "bg-rose",
-    4: "bg-jade",
-};
-
-// ── Deal Card ─────────────────────────────────────────────────────────────────
-
-function DealCard({
-    deal,
-    index,
-    onClick,
-}: {
-    deal: PipelineDeal;
-    index: number;
-    onClick: (deal: PipelineDeal) => void;
-}) {
-    return (
-        <Draggable draggableId={deal.id} index={index}>
-            {(provided, snapshot) => (
-                <div
-                    ref={provided.innerRef}
-                    {...provided.draggableProps}
-                    {...provided.dragHandleProps}
-                    onClick={() => onClick(deal)}
-                    className={cn(
-                        "cursor-pointer rounded-[10px] border border-[var(--rim)] bg-surface-2 p-3",
-                        "transition-all hover:border-[var(--rim2)] hover:translate-x-0.5",
-                        snapshot.isDragging && "shadow-2xl scale-105 border-violet/30 bg-surface-3",
-                    )}
-                >
-                    <p className="mb-2 text-xs font-medium leading-tight text-t1">{deal.title}</p>
-                    <div className="flex items-center justify-between">
-                        <span className="font-mono text-[11px] text-jade">
-                            {deal.value ? formatCurrency(deal.value, { compact: true }) : "—"}
-                        </span>
-                        {deal.contact && (
-                            <Avatar className="h-[18px] w-[18px]">
-                                <AvatarFallback className="text-[8px] font-bold bg-gradient-to-br from-violet to-cyan">
-                                    {deal.contact.name
-                                        .split(" ")
-                                        .slice(0, 2)
-                                        .map((n) => n[0])
-                                        .join("")}
-                                </AvatarFallback>
-                            </Avatar>
-                        )}
-                    </div>
-                    {deal.expectedCloseDate && (
-                        <p className="mt-1.5 font-mono text-[10px] text-t3">
-                            📅 {formatDate(deal.expectedCloseDate)}
-                        </p>
-                    )}
-                    {deal.probability !== null && (
-                        <div className="mt-2 h-0.5 overflow-hidden rounded-full bg-surface-3">
-                            <div
-                                className="h-full rounded-full bg-jade transition-all"
-                                style={{ width: `${deal.probability}%` }}
-                            />
-                        </div>
-                    )}
-                </div>
-            )}
-        </Draggable>
-    );
+interface NewDealForm {
+    title: string;
+    value: string;
+    stageId: string;
 }
 
-// ── Page ──────────────────────────────────────────────────────────────────────
-
-export default function PipelinePage() {
-    const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
-    const [newDealDialogOpen, setNewDealDialogOpen] = useState(false);
-    const [selectedDeal, setSelectedDeal] = useState<PipelineDeal | null>(null);
-    const [defaultStageId, setDefaultStageId] = useState<string | null>(null);
-
-    const { data: pipelines, isLoading: pipelinesLoading } = usePipelines();
-
-    // Use first pipeline if none selected
-    const activePipelineId = selectedPipelineId ?? pipelines?.[0]?.id ?? "";
-    const { data: pipeline, isLoading: pipelineLoading } = usePipeline(activePipelineId);
-
-    const moveDeal = useMoveDeal();
-    const createDeal = useCreateDeal();
-    const { data: contactsData } = useContacts({ limit: 100 });
-
-    const isLoading = pipelinesLoading || pipelineLoading;
-
-    // ── Form ──────────────────────────────────────────────────────────────────
-
-    const {
-        register,
-        handleSubmit,
-        reset,
-        setValue,
-        watch,
-        formState: { errors, isSubmitting },
-    } = useForm<DealFormValues>({
-        resolver: zodResolver(dealSchema),
-        defaultValues: { title: "", value: "", stageId: "", contactId: "", expectedCloseDate: "", probability: "" },
+function NewDealDialog({
+    open,
+    onOpenChange,
+    pipelineId,
+    stages,
+    defaultStageId,
+}: {
+    open: boolean;
+    onOpenChange: (v: boolean) => void;
+    pipelineId: string;
+    stages: PipelineStage[];
+    defaultStageId: string;
+}) {
+    const [form, setForm] = useState<NewDealForm>({
+        title: "",
+        value: "",
+        stageId: defaultStageId || stages[0]?.id || "",
     });
+    const createDeal = useCreateDeal();
 
-    const stageIdValue = watch("stageId");
-    const contactIdValue = watch("contactId");
+    useEffect(() => {
+        if (open) {
+            setForm({ title: "", value: "", stageId: defaultStageId || stages[0]?.id || "" });
+        }
+    }, [open, defaultStageId, stages]);
 
-    const openNewDeal = (stageId?: string) => {
-        reset({ title: "", value: "", stageId: stageId ?? pipeline?.stages?.[0]?.id ?? "", contactId: "", expectedCloseDate: "", probability: "" });
-        if (stageId) setDefaultStageId(stageId);
-        setNewDealDialogOpen(true);
-    };
+    const set = <K extends keyof NewDealForm>(k: K, v: NewDealForm[K]) =>
+        setForm((f) => ({ ...f, [k]: v }));
 
-    const onSubmitDeal = async (values: DealFormValues) => {
+    const handleCreate = async () => {
+        if (!form.title.trim()) { toast.error("Informe o título do deal"); return; }
         try {
             await createDeal.mutateAsync({
-                title: values.title,
-                stageId: values.stageId,
-                pipelineId: activePipelineId,
-                value: values.value ? Number(values.value) : undefined,
-                contactId: values.contactId || undefined,
-                expectedCloseDate: values.expectedCloseDate || undefined,
-                probability: values.probability ? Number(values.probability) : undefined,
+                title: form.title.trim(),
+                pipelineId,
+                stageId: form.stageId,
+                value: form.value ? Number(form.value) : undefined,
             });
-            toast.success("Deal criado com sucesso");
-            setNewDealDialogOpen(false);
+            toast.success("Deal criado");
+            onOpenChange(false);
         } catch {
             toast.error("Erro ao criar deal");
         }
     };
 
-    // ── Drag and Drop ─────────────────────────────────────────────────────────
-
-    const onDragEnd = async (result: DropResult) => {
-        if (!result.destination) return;
-        const { draggableId, destination } = result;
-        if (result.source.droppableId === destination.droppableId) return;
-
-        await moveDeal.mutateAsync({
-            dealId: draggableId,
-            stageId: destination.droppableId,
-        });
-    };
-
-    // ── Render ────────────────────────────────────────────────────────────────
-
     return (
-        <div className="flex h-full flex-col space-y-5 animate-fade-in">
-            {/* Header */}
-            <div className="flex items-end justify-between">
-                <div>
-                    <h1 className="font-display text-[28px] font-semibold leading-none tracking-[-0.8px] text-t1">
-                        Pipeline
-                    </h1>
-                    <p className="mt-1.5 text-sm text-t2">
-                        {pipeline?.name ?? "Funil Principal"}
-                    </p>
-                </div>
-                <div className="flex items-center gap-3">
-                    {/* Pipeline selector */}
-                    {(pipelines?.length ?? 0) > 1 && (
-                        <Select
-                            value={activePipelineId}
-                            onValueChange={setSelectedPipelineId}
-                        >
-                            <SelectTrigger className="w-48">
-                                <SelectValue placeholder="Selecionar pipeline" />
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="max-w-sm">
+                <DialogHeader>
+                    <DialogTitle>Novo deal</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3">
+                    <div className="space-y-1.5">
+                        <Label className="text-xs text-t2">Título</Label>
+                        <Input
+                            placeholder="Ex: Proposta Empresa XYZ"
+                            value={form.title}
+                            onChange={(e) => set("title", e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+                            className="text-sm"
+                            autoFocus
+                        />
+                    </div>
+                    <div className="space-y-1.5">
+                        <Label className="text-xs text-t2">Valor <span className="text-t3">(opcional)</span></Label>
+                        <Input
+                            type="number"
+                            placeholder="0,00"
+                            value={form.value}
+                            onChange={(e) => set("value", e.target.value)}
+                            className="text-sm"
+                        />
+                    </div>
+                    <div className="space-y-1.5">
+                        <Label className="text-xs text-t2">Etapa</Label>
+                        <Select value={form.stageId} onValueChange={(v) => set("stageId", v)}>
+                            <SelectTrigger className="text-sm">
+                                <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                {pipelines?.map((p) => (
-                                    <SelectItem key={p.id} value={p.id}>
-                                        {p.name}
+                                {stages.map((s) => (
+                                    <SelectItem key={s.id} value={s.id}>
+                                        <div className="flex items-center gap-2">
+                                            <span
+                                                className="h-1.5 w-1.5 rounded-full"
+                                                style={{ backgroundColor: s.color }}
+                                            />
+                                            {s.name}
+                                        </div>
                                     </SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
-                    )}
-                    <Button onClick={() => openNewDeal()}>
-                        <Plus className="h-4 w-4" /> Novo Deal
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+                        Cancelar
+                    </Button>
+                    <Button size="sm" onClick={handleCreate} disabled={createDeal.isPending}>
+                        Criar deal
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+// ── Main Page ──────────────────────────────────────────────────────────────────
+
+export default function PipelinePage() {
+    const qc = useQueryClient();
+    const { socket } = useSocket();
+
+    // ── Selected pipeline (persisted in localStorage) ─────────────────────────
+    const [selectedId, setSelectedId] = useState<string>(() => {
+        if (typeof window !== "undefined") {
+            return localStorage.getItem(LS_KEY) ?? "";
+        }
+        return "";
+    });
+
+    const handleSelectPipeline = (id: string) => {
+        setSelectedId(id);
+        localStorage.setItem(LS_KEY, id);
+    };
+
+    // ── Data ───────────────────────────────────────────────────────────────────
+    const { data: pipelines = [], isLoading: loadingPipelines } = usePipelines();
+    const activePipelineId = selectedId || pipelines[0]?.id || "";
+    const { data: pipeline, isLoading: loadingPipeline } = usePipeline(activePipelineId);
+
+    useEffect(() => {
+        if (!selectedId && pipelines.length > 0 && pipelines[0]) {
+            handleSelectPipeline(pipelines[0].id);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pipelines]);
+
+    const moveDeal = useMoveDeal();
+
+    // ── UI state ───────────────────────────────────────────────────────────────
+    const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
+    const [selectedDeal, setSelectedDeal] = useState<PipelineDeal | null>(null);
+    const [newDealOpen, setNewDealOpen] = useState(false);
+    const [defaultStageId, setDefaultStageId] = useState("");
+    const [stageConfigOpen, setStageConfigOpen] = useState(false);
+    const [configStage, setConfigStage] = useState<PipelineStage | null>(null);
+    const [pulsatingDealIds, setPulsatingDealIds] = useState<Set<string>>(new Set());
+    const pulseTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+    const pulseDeal = useCallback((dealId: string) => {
+        setPulsatingDealIds((prev) => new Set([...prev, dealId]));
+        const existing = pulseTimers.current.get(dealId);
+        if (existing) clearTimeout(existing);
+        const timer = setTimeout(() => {
+            setPulsatingDealIds((prev) => {
+                const next = new Set(prev);
+                next.delete(dealId);
+                return next;
+            });
+            pulseTimers.current.delete(dealId);
+        }, PULSE_TTL);
+        pulseTimers.current.set(dealId, timer);
+    }, []);
+
+    // ── Realtime socket events ─────────────────────────────────────────────────
+    useEffect(() => {
+        if (!socket) return;
+
+        const onDealMoved = (payload: {
+            dealId: string;
+            dealTitle: string;
+            toStageName: string;
+            movedBy: string;
+        }) => {
+            qc.invalidateQueries({ queryKey: ["pipelines"] });
+            qc.invalidateQueries({ queryKey: ["deals", payload.dealId] });
+            pulseDeal(payload.dealId);
+            if (payload.movedBy === "AGENT") {
+                toast.info(`🤖 Agente moveu "${payload.dealTitle}" para ${payload.toStageName}`);
+            }
+        };
+
+        const onDealsRotting = () => {
+            qc.invalidateQueries({ queryKey: ["pipelines"] });
+            toast.warning("⚠️ Deals parados detectados");
+        };
+
+        const onAgentProactive = (payload: { dealTitle?: string; contactName?: string }) => {
+            toast.info(
+                `🤖 Agente iniciou contato${payload.contactName ? ` com ${payload.contactName}` : ""}${payload.dealTitle ? ` em "${payload.dealTitle}"` : ""}`,
+            );
+        };
+
+        socket.on("pipeline:deal_moved", onDealMoved);
+        socket.on("pipeline:movement", onDealMoved);
+        socket.on("pipeline:deals_rotting", onDealsRotting);
+        socket.on("agent:proactive_contact", onAgentProactive);
+
+        return () => {
+            socket.off("pipeline:deal_moved", onDealMoved);
+            socket.off("pipeline:movement", onDealMoved);
+            socket.off("pipeline:deals_rotting", onDealsRotting);
+            socket.off("agent:proactive_contact", onAgentProactive);
+        };
+    }, [socket, qc, pulseDeal]);
+
+    // ── Filter deals ───────────────────────────────────────────────────────────
+    const allDeals = pipeline?.deals ?? [];
+    const filteredDeals = allDeals.filter((d) => {
+        if (filters.search && !d.title.toLowerCase().includes(filters.search.toLowerCase())) return false;
+        if (filters.isRotting && !d.isRotting) return false;
+        if (filters.hasAgent && !d.activeAgentSessionId) return false;
+        if (filters.ownerId && d.ownerId !== filters.ownerId) return false;
+        return true;
+    });
+
+    // ── Handlers ───────────────────────────────────────────────────────────────
+    const handleMoveDeal = async (dealId: string, toStageId: string, reason: string) => {
+        await moveDeal.mutateAsync({ dealId, toStageId, reason });
+    };
+
+    const handleAddDeal = (stageId: string) => {
+        setDefaultStageId(stageId);
+        setNewDealOpen(true);
+    };
+
+    const handleStageMenu = (stage: PipelineStage) => {
+        setConfigStage(stage);
+        setStageConfigOpen(true);
+    };
+
+    // ── Loading skeleton ───────────────────────────────────────────────────────
+    if (loadingPipelines || (!pipeline && loadingPipeline)) {
+        return (
+            <div className="flex h-full flex-col gap-4 p-6">
+                <div className="flex items-center gap-3">
+                    <Skeleton className="h-9 w-52 rounded-[10px]" />
+                    <Skeleton className="ml-auto h-9 w-24 rounded-[10px]" />
+                </div>
+                <Skeleton className="h-8 w-full rounded-[8px]" />
+                <div className="flex gap-3 overflow-hidden">
+                    {[...Array(5)].map((_, i) => (
+                        <div key={i} className="w-[264px] shrink-0 space-y-2">
+                            <Skeleton className="h-14 rounded-[10px]" />
+                            {[...Array(3)].map((_, j) => (
+                                <Skeleton key={j} className="h-28 rounded-[10px]" />
+                            ))}
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex h-full flex-col overflow-hidden">
+            {/* ── Header ──────────────────────────────────────────────────────── */}
+            <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-[var(--rim)] px-6 py-3">
+                <PipelineSelector
+                    pipelines={pipelines}
+                    value={activePipelineId}
+                    onValueChange={handleSelectPipeline}
+                />
+                <div className="flex flex-1 items-center justify-end gap-2">
+                    <Link href="/pipeline/settings">
+                        <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs text-t2">
+                            <Settings className="h-3.5 w-3.5" />
+                            Pipelines
+                        </Button>
+                    </Link>
+                    <Button
+                        size="sm"
+                        className="h-8 gap-1.5 text-xs"
+                        onClick={() => { setDefaultStageId(""); setNewDealOpen(true); }}
+                    >
+                        <Plus className="h-3.5 w-3.5" />
+                        Novo Deal
                     </Button>
                 </div>
             </div>
 
-            {/* Stats row */}
-            {pipeline && (
-                <div className="flex items-center gap-6 font-mono text-[11px] text-t3">
-                    <span>
-                        <span className="text-t1 font-semibold">{pipeline.deals?.length ?? 0}</span> deals
-                    </span>
-                    <span>
-                        <span className="text-jade font-semibold">
-                            {formatCurrency(
-                                (pipeline.deals ?? []).reduce((acc, d) => acc + (d.value ?? 0), 0),
-                                { compact: true },
-                            )}
-                        </span>{" "}
-                        em aberto
-                    </span>
-                </div>
-            )}
+            {/* ── Filter bar ──────────────────────────────────────────────────── */}
+            <div className="shrink-0 border-b border-[var(--rim)] px-6 py-2">
+                <FilterBar filters={filters} onFiltersChange={setFilters} />
+            </div>
 
-            {/* Kanban board */}
-            {isLoading ? (
-                <div className="flex flex-1 gap-3 overflow-x-auto pb-4">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                        <div key={i} className="w-64 shrink-0 space-y-2">
-                            <Skeleton className="h-8 w-full rounded-[10px]" />
-                            <Skeleton className="h-24 w-full rounded-[10px]" />
-                            <Skeleton className="h-24 w-full rounded-[10px]" />
-                        </div>
-                    ))}
-                </div>
-            ) : (
-                <DragDropContext onDragEnd={onDragEnd}>
-                    <div className="flex flex-1 gap-3 overflow-x-auto pb-4">
-                        {(pipeline?.stages ?? []).map((stage, si) => {
-                            const stageDeals = (pipeline?.deals ?? []).filter(
-                                (d) => d.stageId === stage.id,
-                            );
-                            const totalValue = stageDeals.reduce(
-                                (acc, d) => acc + (d.value ?? 0),
-                                0,
-                            );
-
-                            return (
-                                <div key={stage.id} className="w-64 shrink-0 flex flex-col">
-                                    {/* Column header */}
-                                    <div className="mb-3 flex items-center justify-between">
-                                        <span className="font-mono text-[11px] font-medium text-t1">
-                                            {stage.name}
-                                        </span>
-                                        <div className="flex items-center gap-2">
-                                            {totalValue > 0 && (
-                                                <span className="font-mono text-[10px] text-jade">
-                                                    {formatCurrency(totalValue, { compact: true })}
-                                                </span>
-                                            )}
-                                            <span className="rounded-[10px] bg-surface-2 px-1.5 py-px font-mono text-[10px] text-t3">
-                                                {stageDeals.length}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div
-                                        className={cn(
-                                            "mb-3 h-0.5 rounded-full",
-                                            STAGE_BG_COLORS[si] ?? "bg-t3",
-                                        )}
-                                    />
-
-                                    {/* Drop zone */}
-                                    <Droppable droppableId={stage.id}>
-                                        {(provided, snapshot) => (
-                                            <div
-                                                ref={provided.innerRef}
-                                                {...provided.droppableProps}
-                                                className={cn(
-                                                    "flex-1 space-y-2 rounded-[10px] transition-colors min-h-[100px]",
-                                                    snapshot.isDraggingOver && "bg-violet/[0.04] ring-1 ring-violet/20",
-                                                )}
-                                            >
-                                                {stageDeals.map((deal, index) => (
-                                                    <DealCard
-                                                        key={deal.id}
-                                                        deal={deal}
-                                                        index={index}
-                                                        onClick={setSelectedDeal}
-                                                    />
-                                                ))}
-                                                {provided.placeholder}
-                                                <button
-                                                    onClick={() => openNewDeal(stage.id)}
-                                                    className="flex w-full items-center gap-2 rounded-[10px] border border-dashed border-[var(--rim)] px-3 py-2.5 text-xs text-t3 transition-colors hover:border-[var(--rim2)] hover:text-t2"
-                                                >
-                                                    <Plus className="h-3.5 w-3.5" /> Adicionar
-                                                </button>
-                                            </div>
-                                        )}
-                                    </Droppable>
-                                </div>
-                            );
-                        })}
+            {/* ── Content ─────────────────────────────────────────────────────── */}
+            <div className="min-h-0 flex-1 overflow-auto p-6">
+                {!pipeline ? (
+                    <div className="flex h-full items-center justify-center text-sm text-t3">
+                        Selecione um pipeline para visualizar.
                     </div>
-                </DragDropContext>
+                ) : filters.view === "kanban" ? (
+                    <KanbanBoard
+                        pipeline={pipeline}
+                        filteredDeals={filteredDeals}
+                        pulsatingDealIds={pulsatingDealIds}
+                        onDealClick={setSelectedDeal}
+                        onAddDeal={handleAddDeal}
+                        onStageMenu={handleStageMenu}
+                        onMoveDeal={handleMoveDeal}
+                    />
+                ) : filters.view === "list" ? (
+                    <ListView
+                        deals={filteredDeals}
+                        stages={pipeline.stages}
+                        onDealClick={setSelectedDeal}
+                    />
+                ) : (
+                    <FunnelView pipelineId={activePipelineId} />
+                )}
+            </div>
+
+            {/* ── Deal drawer ─────────────────────────────────────────────────── */}
+            <DealDrawer
+                deal={selectedDeal}
+                open={!!selectedDeal}
+                onOpenChange={(open) => !open && setSelectedDeal(null)}
+            />
+
+            {/* ── New deal dialog ──────────────────────────────────────────────── */}
+            <NewDealDialog
+                open={newDealOpen}
+                onOpenChange={setNewDealOpen}
+                pipelineId={activePipelineId}
+                stages={pipeline?.stages ?? []}
+                defaultStageId={defaultStageId}
+            />
+
+            {/* ── Stage config modal ───────────────────────────────────────────── */}
+            {configStage && (
+                <StageConfigModal
+                    stage={configStage}
+                    pipelineId={activePipelineId}
+                    open={stageConfigOpen}
+                    onOpenChange={(open) => {
+                        setStageConfigOpen(open);
+                        if (!open) setConfigStage(null);
+                    }}
+                />
             )}
-
-            {/* New Deal Dialog */}
-            <Dialog open={newDealDialogOpen} onOpenChange={setNewDealDialogOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Novo Deal</DialogTitle>
-                    </DialogHeader>
-
-                    <form onSubmit={handleSubmit(onSubmitDeal)} className="space-y-4">
-                        <div className="space-y-1.5">
-                            <Label>Título *</Label>
-                            <Input placeholder="Ex: Proposta Empresa XYZ" {...register("title")} />
-                            {errors.title && (
-                                <p className="text-[11px] text-rose">{errors.title.message}</p>
-                            )}
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1.5">
-                                <Label>Valor (R$)</Label>
-                                <Input type="number" placeholder="0" {...register("value")} />
-                            </div>
-                            <div className="space-y-1.5">
-                                <Label>Probabilidade (%)</Label>
-                                <Input type="number" min={0} max={100} placeholder="50" {...register("probability")} />
-                            </div>
-                        </div>
-
-                        <div className="space-y-1.5">
-                            <Label>Estágio *</Label>
-                            <Select
-                                value={stageIdValue}
-                                onValueChange={(v) => setValue("stageId", v)}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Selecione o estágio" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {(pipeline?.stages ?? []).map((s) => (
-                                        <SelectItem key={s.id} value={s.id}>
-                                            {s.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                            {errors.stageId && (
-                                <p className="text-[11px] text-rose">{errors.stageId.message}</p>
-                            )}
-                        </div>
-
-                        <div className="space-y-1.5">
-                            <Label>Contato</Label>
-                            <Select
-                                value={contactIdValue ?? ""}
-                                onValueChange={(v) => setValue("contactId", v)}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Vincular contato (opcional)" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {(contactsData?.contacts ?? []).map((c) => (
-                                        <SelectItem key={c.id} value={c.id}>
-                                            {c.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div className="space-y-1.5">
-                            <Label>Data esperada de fechamento</Label>
-                            <Input type="date" {...register("expectedCloseDate")} />
-                        </div>
-
-                        <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => setNewDealDialogOpen(false)}>
-                                Cancelar
-                            </Button>
-                            <Button type="submit" disabled={isSubmitting}>
-                                {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-                                Criar Deal
-                            </Button>
-                        </DialogFooter>
-                    </form>
-                </DialogContent>
-            </Dialog>
-
-            {/* Deal detail sheet */}
-            <Sheet open={!!selectedDeal} onOpenChange={(open) => !open && setSelectedDeal(null)}>
-                <SheetContent side="right">
-                    <SheetHeader>
-                        <SheetTitle>{selectedDeal?.title}</SheetTitle>
-                        <SheetDescription>Detalhes do deal</SheetDescription>
-                    </SheetHeader>
-
-                    {selectedDeal && (
-                        <div className="flex flex-col gap-5 px-6 py-5">
-                            {/* Value */}
-                            <div className="rounded-[12px] border border-[var(--rim)] bg-surface-2 p-4">
-                                <p className="font-mono text-[10px] uppercase tracking-widest text-t3">Valor</p>
-                                <p className="mt-1 font-display text-2xl font-semibold text-jade">
-                                    {selectedDeal.value
-                                        ? formatCurrency(selectedDeal.value)
-                                        : "Não definido"}
-                                </p>
-                            </div>
-
-                            {/* Info rows */}
-                            <div className="space-y-3">
-                                {selectedDeal.contact && (
-                                    <div className="flex items-center gap-3">
-                                        <User className="h-4 w-4 text-t3" />
-                                        <div>
-                                            <p className="text-[11px] text-t3">Contato</p>
-                                            <p className="text-sm text-t1">{selectedDeal.contact.name}</p>
-                                        </div>
-                                    </div>
-                                )}
-                                {selectedDeal.expectedCloseDate && (
-                                    <div className="flex items-center gap-3">
-                                        <Calendar className="h-4 w-4 text-t3" />
-                                        <div>
-                                            <p className="text-[11px] text-t3">Fechamento esperado</p>
-                                            <p className="text-sm text-t1">
-                                                {formatDate(selectedDeal.expectedCloseDate)}
-                                            </p>
-                                        </div>
-                                    </div>
-                                )}
-                                {selectedDeal.probability !== null && (
-                                    <div className="flex items-center gap-3">
-                                        <DollarSign className="h-4 w-4 text-t3" />
-                                        <div>
-                                            <p className="text-[11px] text-t3">Probabilidade</p>
-                                            <div className="mt-1 flex items-center gap-2">
-                                                <div className="h-1.5 w-32 overflow-hidden rounded-full bg-surface-3">
-                                                    <div
-                                                        className="h-full rounded-full bg-jade"
-                                                        style={{ width: `${selectedDeal.probability}%` }}
-                                                    />
-                                                </div>
-                                                <span className="font-mono text-xs text-jade">
-                                                    {selectedDeal.probability}%
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Stage badges */}
-                            <div>
-                                <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-t3">Mover para estágio</p>
-                                <div className="flex flex-wrap gap-2">
-                                    {(pipeline?.stages ?? []).map((s) => (
-                                        <Badge
-                                            key={s.id}
-                                            variant={s.id === selectedDeal.stageId ? "default" : "muted"}
-                                            className={cn(
-                                                "cursor-pointer transition-all hover:opacity-80",
-                                                s.id !== selectedDeal.stageId && "hover:border-[var(--rim2)]",
-                                            )}
-                                            onClick={async () => {
-                                                if (s.id === selectedDeal.stageId) return;
-                                                await moveDeal.mutateAsync({ dealId: selectedDeal.id, stageId: s.id });
-                                                setSelectedDeal((prev) => prev ? { ...prev, stageId: s.id } : null);
-                                                toast.success("Deal movido");
-                                            }}
-                                        >
-                                            {s.name}
-                                        </Badge>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                </SheetContent>
-            </Sheet>
         </div>
     );
 }

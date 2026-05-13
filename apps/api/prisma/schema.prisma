@@ -213,6 +213,47 @@ enum AITrainingDataType {
   FAQ
 }
 
+enum PipelineType {
+  SALES          // funil de vendas genérico
+  PRODUCT        // por produto específico
+  SERVICE        // por serviço específico
+  CAMPAIGN       // por campanha de marketing/ads
+  PARTNERSHIP    // parcerias e canais
+  RENEWAL        // renovações e upsell
+  RECRUITMENT    // RH e recrutamento
+  CUSTOM         // propósito livre
+}
+
+enum PipelineVisibility {
+  ALL            // todos da org
+  DEPARTMENT     // apenas departamentos em allowedRoles
+  ROLES          // apenas papéis específicos
+}
+
+enum StageType {
+  REGULAR   // etapa normal
+  ENTRY     // primeiro contato (pode ter múltiplas)
+  NURTURING // nutrição/aquecimento
+  DECISION  // etapa decisiva
+  WON       // ganho
+  LOST      // perdido
+  ON_HOLD   // pausado/aguardando
+}
+
+enum StageAgentTrigger {
+  MANUAL       // humano decide quando acionar o agente
+  AUTO_ENTER   // agente acionado automaticamente ao entrar na etapa
+  AUTO_ROTTING // agente acionado quando deal ficar parado
+  SCHEDULED    // agente acionado em horário configurado
+}
+
+enum MovedByType {
+  HUMAN      // vendedor humano
+  AGENT      // super agente
+  AUTOMATION // automação do sistema
+  SYSTEM     // sistema (ex: rotting)
+}
+
 // =============================================================================
 // ORGANIZATION
 // =============================================================================
@@ -408,33 +449,86 @@ model Company {
 // =============================================================================
 
 model Pipeline {
-  id        String  @id @default(cuid())
-  name      String
-  isDefault Boolean @default(false)
+  id          String  @id @default(cuid())
+  name        String
+  description String?
+  color       String  @default("#7c5cfc")
+  icon        String? // emoji ou nome de ícone
+
+  // Contexto e propósito
+  type        PipelineType
+  context     Json?   // metadados livres: campanha, produto, serviço, etc.
+  tags        String[]
+
+  // Configuração
+  isDefault        Boolean @default(false)
+  isActive         Boolean @default(true)
+  rotting          Boolean @default(true)   // ativar alerta de deals parados
+  rottingDays      Int     @default(7)      // dias sem atividade = alerta
+  currency         String  @default("BRL")
+  winProbabilityAuto Boolean @default(true) // IA calcula probabilidade
+
+  // Campos customizados específicos deste pipeline
+  customFieldSchema Json @default("[]")
+  // Estrutura: [{ key, label, type, required, options?, stage? }]
+
+  // Permissões
+  visibility   PipelineVisibility @default(ALL)
+  allowedRoles String[]           @default([])
+
   orgId     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   org    Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
   stages PipelineStage[]
   deals  Deal[]
 
-  @@index([orgId])
+  @@index([orgId, isActive])
   @@map("pipelines")
 }
 
 model PipelineStage {
   id          String  @id @default(cuid())
-  name        String
-  order       Int
-  color       String  @default("#6366f1")
-  probability Int     @default(0)
-  isWon       Boolean @default(false)
-  isLost      Boolean @default(false)
   pipelineId  String
+  name        String
+  description String?
+  order       Int
+  color       String  @default("#7c5cfc")
 
-  pipeline Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  deals    Deal[]
+  // Tipo da etapa
+  type        StageType @default(REGULAR)
 
-  @@index([pipelineId])
+  // Probabilidade e métricas
+  probability   Int     @default(0)  // 0-100%
+  avgDaysInStage Float? // calculado automaticamente
+
+  // Configuração de comportamento
+  rottingDays   Int?    // override do pipeline, null = herda
+  maxDeals      Int?    // limite de deals simultâneos nesta etapa
+
+  // Automações da etapa — o que acontece ao entrar/sair/ficar parado
+  onEnterActions   Json @default("[]") // ações ao entrar
+  onExitActions    Json @default("[]") // ações ao sair
+  onRottingActions Json @default("[]") // ações ao ficar parado
+  requiredFields   Json @default("[]") // campos obrigatórios para sair
+
+  // Integração com Super Agente
+  agentId      String?  // agente ativado quando deal entra nesta etapa
+  agentTrigger StageAgentTrigger @default(MANUAL)
+  agentGoal    String?  // instrução específica para o agente nesta etapa
+
+  // WON/LOST
+  isWon  Boolean @default(false)
+  isLost Boolean @default(false)
+
+  pipelineId_rel Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade, map: "stage_pipeline_fk")
+  agent          AIAgent? @relation(fields: [agentId], references: [id])
+  deals          Deal[]
+  fromMovements  DealStageMovement[] @relation("FromStage")
+  toMovements    DealStageMovement[] @relation("ToStage")
+
+  @@index([pipelineId, order])
   @@map("pipeline_stages")
 }
 
@@ -443,40 +537,106 @@ model PipelineStage {
 // =============================================================================
 
 model Deal {
-  id              String    @id @default(cuid())
-  title           String
-  value           Decimal?  @db.Decimal(15, 2)
-  currency        String    @default("BRL")
-  stageId         String
-  pipelineId      String
-  contactId       String
-  ownerId         String
-  orgId           String
-  branchId        String?
-  probability     Int       @default(0)
+  id         String  @id @default(cuid())
+  title      String
+  value      Decimal @default(0) @db.Decimal(15, 2)
+  currency   String  @default("BRL")
+
+  // Pipeline e etapa
+  pipelineId     String
+  stageId        String
+  stageEnteredAt DateTime @default(now()) // quando entrou no stage atual
+  stageHistory   Json     @default("[]")  // histórico de movimentos
+
+  // Contato e responsável
+  contactId String
+  ownerId   String
+  orgId     String
+  branchId  String?
+
+  // Previsão
+  probability     Int       @default(0)   // 0-100, calculado por IA ou manual
+  aiProbability   Float?    // probabilidade calculada pela IA (separada)
   expectedCloseAt DateTime?
   closedAt        DateTime?
   closedReason    String?
-  customFields    Json      @default("{}")
-  isActive        Boolean   @default(true)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
 
-  stage      PipelineStage @relation(fields: [stageId], references: [id])
-  pipeline   Pipeline      @relation(fields: [pipelineId], references: [id])
-  contact    Contact       @relation(fields: [contactId], references: [id])
-  owner      User          @relation("DealOwner", fields: [ownerId], references: [id])
-  org        Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  branch     Branch?       @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  activities Activity[]
-  payments   Payment[]
+  // Status de saúde
+  isRotting      Boolean  @default(false)
+  lastActivityAt DateTime @default(now())
+  rottingDays    Int      @default(0)    // dias sem atividade
+
+  // Campos customizados
+  customFields Json @default("{}")
+
+  // Integração com agente — quem está conduzindo este deal
+  activeAgentSessionId String? // AIAgentSession ativa neste deal
+  agentHistory         Json    @default("[]") // histórico de sessões de agente
+
+  // Rastreio de origem
+  utmSource   String?
+  utmCampaign String?
+  adId        String?
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  pipeline       Pipeline      @relation(fields: [pipelineId], references: [id])
+  stage          PipelineStage @relation(fields: [stageId], references: [id])
+  contact        Contact       @relation(fields: [contactId], references: [id])
+  owner          User          @relation("DealOwner", fields: [ownerId], references: [id])
+  org            Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  branch         Branch?       @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  activities     Activity[]
+  payments       Payment[]
   automationLogs AutomationLog[]
+  stageMovements DealStageMovement[]
 
-  @@index([orgId])
+  @@index([orgId, pipelineId, stageId])
+  @@index([orgId, ownerId])
+  @@index([orgId, isRotting])
   @@index([contactId])
-  @@index([ownerId])
-  @@index([stageId])
   @@map("deals")
+}
+
+// =============================================================================
+// DEAL STAGE MOVEMENT
+// =============================================================================
+
+model DealStageMovement {
+  id    String @id @default(cuid())
+  dealId String
+  orgId  String
+
+  fromStageId   String?
+  toStageId     String
+  fromStageName String?
+  toStageName   String
+
+  // Quem/o que moveu
+  movedBy        MovedByType
+  userId         String?  // se movido por humano
+  agentId        String?  // se movido por agente
+  agentSessionId String?  // sessão do agente que moveu
+
+  // Contexto da movimentação
+  reason            String? // por que foi movido
+  dataCollected     Json?   // dados coletados antes de mover
+  triggerEvent      String? // evento que disparou (ex: "buying_signal_detected")
+
+  // Tempo no stage anterior
+  daysInPreviousStage Float?
+
+  createdAt DateTime @default(now())
+
+  deal      Deal           @relation(fields: [dealId], references: [id])
+  fromStage PipelineStage? @relation("FromStage", fields: [fromStageId], references: [id])
+  toStage   PipelineStage  @relation("ToStage", fields: [toStageId], references: [id])
+
+  @@index([dealId])
+  @@index([orgId, createdAt])
+  @@map("deal_stage_movements")
 }
 
 // =============================================================================
@@ -872,10 +1032,11 @@ model AIAgent {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  org          Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  sessions     AIAgentSession[]
-  flowVersions AgentFlowVersion[]
-  learningJobs AgentLearningJob[]
+  org              Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  sessions         AIAgentSession[]
+  flowVersions     AgentFlowVersion[]
+  learningJobs     AgentLearningJob[]
+  stageAssignments PipelineStage[]
 
   @@index([orgId])
   @@map("ai_agents")
