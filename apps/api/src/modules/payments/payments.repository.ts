@@ -120,7 +120,7 @@ export class PaymentsRepository {
         });
     }
 
-    updateStatus(
+    async updateStatus(
         id: string,
         orgId: string,
         data: {
@@ -129,13 +129,17 @@ export class PaymentsRepository {
             paidAt?: Date;
         },
     ) {
-        return prisma.payment.update({
-            where: { id },
+        const result = await prisma.payment.updateMany({
+            where: { id, orgId },
             data: {
                 status: data.status as never,
                 ...(data.externalId ? { externalId: data.externalId } : {}),
                 ...(data.paidAt ? { paidAt: data.paidAt } : {}),
             },
+        });
+        if (result.count === 0) return null;
+        return prisma.payment.findFirst({
+            where: { id, orgId },
             select: paymentSelect,
         });
     }

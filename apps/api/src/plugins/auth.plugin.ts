@@ -38,8 +38,15 @@ export const authPlugin = fp(async (fastify) => {
     const firebase = getFirebaseAdmin();
     const firebaseAuth = getAuth(firebase);
 
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret || jwtSecret.length < 32) {
+        throw new Error(
+            "JWT_SECRET environment variable is required and must be at least 32 characters long."
+        );
+    }
+
     await fastify.register(fastifyJwt, {
-        secret: process.env.JWT_SECRET ?? "development-only-secret-change-me"
+        secret: jwtSecret
     });
 
     fastify.decorate("verifyFirebaseToken", async (request: FastifyRequest, reply: FastifyReply) => {

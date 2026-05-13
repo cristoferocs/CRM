@@ -1,6 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import type { Server as HttpServer } from "node:http";
 import { Server as SocketServer } from "socket.io";
+import { createAdapter } from "@socket.io/redis-adapter";
+import { getRedis } from "../lib/redis.js";
 
 let io: SocketServer | null = null;
 
@@ -19,6 +21,17 @@ export function initializeSocket(server: HttpServer, fastify: FastifyInstance) {
             credentials: true,
         },
     });
+
+    // Redis adapter — required for horizontal scaling so room broadcasts
+    // are propagated across all API instances.
+    try {
+        const pubClient = getRedis().duplicate();
+        const subClient = getRedis().duplicate();
+        io.adapter(createAdapter(pubClient, subClient));
+        fastify.log.info("socket.io redis adapter enabled");
+    } catch (error) {
+        fastify.log.error({ error }, "failed to enable socket.io redis adapter");
+    }
 
     io.on("connection", (socket) => {
         fastify.log.info({ socketId: socket.id }, "websocket connected");

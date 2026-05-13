@@ -63,8 +63,10 @@ export async function vertexSearch(
 }
 
 async function getAccessToken(): Promise<string> {
-    if (process.env.GOOGLE_DRIVE_ACCESS_TOKEN) {
-        return process.env.GOOGLE_DRIVE_ACCESS_TOKEN;
+    // GOOGLE_VERTEX_ACCESS_TOKEN is only for local/CI overrides.
+    // In production the GCP metadata server is always used.
+    if (process.env.GOOGLE_VERTEX_ACCESS_TOKEN) {
+        return process.env.GOOGLE_VERTEX_ACCESS_TOKEN;
     }
     const resp = await axios.get<{ access_token: string }>(
         "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",

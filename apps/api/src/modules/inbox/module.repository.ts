@@ -1,4 +1,5 @@
 import { prisma } from "../../lib/prisma.js";
+import type { Prisma } from "@prisma/client";
 import type {
     ConversationFilters,
     CreateConversationInput,
@@ -85,7 +86,7 @@ export class InboxRepository {
         const skip = (page - 1) * limit;
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const where: any = {
+        const where: Prisma.ConversationWhereInput = {
             orgId,
             ...(channel ? { channel } : {}),
             ...(status ? { status } : {}),
@@ -228,7 +229,7 @@ export class InboxRepository {
         if (!conversation) return { data: [], hasMore: false };
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const where: any = {
+        const where: Prisma.MessageWhereInput = {
             conversationId,
             ...(before ? { sentAt: { lt: new Date(before) } } : {}),
         };
@@ -251,9 +252,9 @@ export class InboxRepository {
         });
     }
 
-    updateMessageStatus(externalId: string, status: string) {
+    updateMessageStatus(externalId: string, status: string, orgId: string) {
         return prisma.message.updateMany({
-            where: { externalId },
+            where: { externalId, conversation: { orgId } },
             data: {
                 status: status as never,
                 ...(status === "DELIVERED" ? { deliveredAt: new Date() } : {}),

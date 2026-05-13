@@ -180,7 +180,7 @@ async function handleWhatsAppMessages(
         };
         const mapped = statusMap[status.status];
         if (mapped) {
-            await inboxRepo.updateMessageStatus(status.id, mapped);
+            await inboxRepo.updateMessageStatus(status.id, mapped, orgId);
             const io = getIO();
             if (io) {
                 const msg = await prisma.message.findFirst({

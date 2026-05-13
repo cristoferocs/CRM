@@ -246,6 +246,7 @@ export class AutomationsService {
                 automationId,
                 contactId: contactId ?? null,
                 dealId: dealId ?? null,
+                orgId,
                 status: results.every((r) => r.success) ? "SUCCESS" : "FAILED",
                 executedActions: results as never,
                 error: results.find((r) => !r.success)?.error ?? null,

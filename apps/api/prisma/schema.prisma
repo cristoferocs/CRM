@@ -223,6 +223,7 @@ model Organization {
   automations      Automation[]
   timeline         TimelineEvent[]
   auditLogs        AuditLog[]
+  automationLogs   AutomationLog[]
   knowledgeBases   KnowledgeBase[]
   aiAgents         AIAgent[]
   aiInsights       AIInsight[]
@@ -312,6 +313,7 @@ model User {
 
   @@index([orgId])
   @@index([email])
+  @@index([branchId])
   @@map("users")
 }
 
@@ -546,6 +548,7 @@ model Message {
   sender       User?        @relation(fields: [senderId], references: [id], onDelete: SetNull)
 
   @@index([conversationId])
+  @@index([conversationId, sentAt])
   @@index([externalId])
   @@map("messages")
 }
@@ -657,17 +660,20 @@ model AutomationLog {
   automationId     String
   contactId        String?
   dealId           String?
+  orgId            String
   status           AutomationLogStatus
   executedActions  Json                @default("[]")
   error            String?
   createdAt        DateTime            @default(now())
 
-  automation Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
-  contact    Contact?   @relation(fields: [contactId], references: [id], onDelete: SetNull)
-  deal       Deal?      @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  automation Automation   @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  contact    Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  deal       Deal?        @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@index([automationId])
   @@index([contactId])
+  @@index([orgId])
   @@map("automation_logs")
 }
 

@@ -9,7 +9,12 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 const ALGORITHM = "aes-256-gcm";
 
 function getKey(): Buffer {
-    const secret = process.env.APP_SECRET ?? process.env.JWT_SECRET ?? "changeme-use-APP_SECRET";
+    const secret = process.env.APP_SECRET ?? process.env.JWT_SECRET;
+    if (!secret || secret.length < 32) {
+        throw new Error(
+            "APP_SECRET (or JWT_SECRET) environment variable is required and must be at least 32 characters long for token encryption."
+        );
+    }
     return createHash("sha256").update(secret).digest();
 }
 

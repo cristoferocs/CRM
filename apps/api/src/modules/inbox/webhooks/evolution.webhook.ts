@@ -234,7 +234,7 @@ async function handleMessageUpdate(orgId: string, data: EvolutionUpdateData) {
     const mappedStatus = statusMap[update.status];
     if (!mappedStatus || !key.id) return;
 
-    await inboxRepo.updateMessageStatus(key.id, mappedStatus);
+    await inboxRepo.updateMessageStatus(key.id, mappedStatus, orgId);
 
     const io = getIO();
     if (io) {

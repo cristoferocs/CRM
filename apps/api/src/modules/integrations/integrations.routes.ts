@@ -1,6 +1,10 @@
 import { z } from "zod";
+import { randomBytes } from "node:crypto";
 import type { FastifyPluginAsync } from "fastify";
 import { GoogleWorkspaceClient } from "../../lib/google-workspace.js";
+import { getRedis } from "../../lib/redis.js";
+
+const OAUTH_STATE_TTL = 600; // 10 minutes in seconds
 
 const SlotParams = z.object({
     date: z.string().min(1),
@@ -31,8 +35,14 @@ export const integrationsRoutes: FastifyPluginAsync = async (fastify) => {
         { onRequest: [fastify.verifyJWT] },
         async (request) => {
             const orgId = request.user.orgId!;
+            // Generate a cryptographically random nonce and store orgId → nonce in Redis
+            // so the callback can safely look up the correct org without trusting the state param.
+            const nonce = randomBytes(24).toString("hex");
+            const redis = getRedis();
+            await redis.set(`oauth:state:${nonce}`, orgId, "EX", OAUTH_STATE_TTL);
+
             const gws = new GoogleWorkspaceClient(orgId);
-            const url = gws.getAuthUrl(orgId);
+            const url = gws.getAuthUrl(nonce); // nonce is passed as state, NOT orgId
             return { url };
         },
     );
@@ -43,9 +53,14 @@ export const integrationsRoutes: FastifyPluginAsync = async (fastify) => {
         async (request, reply) => {
             const { code, state } = request.query as { code?: string; state?: string };
             if (!code) return reply.status(400).send({ message: "Missing code" });
+            if (!state) return reply.status(400).send({ message: "Missing state" });
 
-            const orgId = state ?? "";
-            if (!orgId) return reply.status(400).send({ message: "Missing orgId in state" });
+            // Validate state nonce — prevents CSRF / open-redirect abuse
+            const redis = getRedis();
+            const orgId = await redis.getdel(`oauth:state:${state}`);
+            if (!orgId) {
+                return reply.status(400).send({ message: "Invalid or expired OAuth state. Please try again." });
+            }
 
             const gws = new GoogleWorkspaceClient(orgId);
             await gws.exchangeCode(code);

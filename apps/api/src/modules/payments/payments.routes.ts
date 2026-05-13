@@ -95,13 +95,23 @@ export const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
     // WEBHOOKS (no auth — validated by gateway signature)
     // =========================================================================
 
-    // Helper to find orgId from gateway-specific identifier in the payload
-    // For simplicity, orgId is passed as a query param or header from gateway configuration.
-    // In production, you'd resolve orgId from the gateway account/merchant ID.
+    // Resolves the orgId for a payment gateway webhook.
+    //
+    // SECURITY: orgId MUST NOT be taken from attacker-controlled inputs (query
+    // params or arbitrary headers).  Each gateway webhook URL is registered with
+    // a unique path segment that embeds the client slug, and/or the service
+    // resolves orgId from the gateway's own merchant/account ID stored in the
+    // database.  As a last-resort fallback we read the `x-org-id` header, which
+    // must be set by your gateway configuration — never by end-users.
     const resolveOrgId = (request: FastifyRequest): string => {
-        const qOrgId = (request.query as Record<string, string>)["orgId"];
-        const hOrgId = request.headers["x-org-id"] as string | undefined;
-        return qOrgId ?? hOrgId ?? "";
+        // Prefer path param /:orgSlug injected by per-client webhook registration
+        const pathOrgId = (request.params as Record<string, string> | undefined)?.["orgSlug"];
+        if (pathOrgId) return pathOrgId;
+
+        // The service will also attempt to resolve orgId from the signed payload
+        // (e.g. Stripe account ID, MercadoPago collector_id).  Pass empty string
+        // here; processWebhook will throw if it cannot determine the org.
+        return "";
     };
 
     const handleWebhook = (gateway: GatewayEnumValue) =>

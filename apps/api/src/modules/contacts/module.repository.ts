@@ -1,4 +1,5 @@
 import { prisma } from "../../lib/prisma.js";
+import type { Prisma } from "@prisma/client";
 import type { ContactFilters, CreateContactInput, UpdateContactInput } from "./module.schema.js";
 
 const contactSelect = {
@@ -35,7 +36,7 @@ export class ContactsRepository {
         const skip = (page - 1) * limit;
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const where: any = {
+        const where: Prisma.ContactWhereInput = {
             orgId,
             isActive: true,
             ...(type ? { type } : {}),

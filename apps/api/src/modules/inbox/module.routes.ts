@@ -15,8 +15,8 @@ import {
     type SendMessageInput,
     type MessageCursorInput,
 } from "./module.schema.js";
-import { handleEvolutionWebhook } from "./webhooks/evolution.webhook.js";
-import { handleMetaWebhook, verifyMetaChallenge } from "./webhooks/meta.webhook.js";
+import { verifyMetaChallenge } from "./webhooks/meta.webhook.js";
+import { queues } from "../../queue/queues.js";
 
 const IdParams = z.object({ id: z.string() });
 
@@ -151,12 +151,15 @@ export const inboxRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post(
         "/webhooks/evolution",
         { config: { rateLimit: { max: 500, timeWindow: "1 minute" } } },
-        async (request, reply) => {
-            // Fire-and-forget: respond 200 immediately, process async
-            reply.code(200).send({ ok: true });
-            handleEvolutionWebhook(request.body as never, fastify).catch((err) =>
-                fastify.log.error({ err }, "evolution webhook processing error"),
+        async (_request, reply) => {
+            // Enqueue the raw payload and return 200 immediately.
+            // All processing happens in the inbox worker.
+            await queues.inbox().add(
+                "inbox:evolution",
+                { type: "inbox:evolution", payload: _request.body as Record<string, unknown> },
+                { attempts: 3, backoff: { type: "exponential", delay: 5_000 } },
             );
+            return reply.code(200).send({ ok: true });
         },
     );
 
@@ -192,11 +195,13 @@ export const inboxRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post(
         "/webhooks/meta",
         { config: { rateLimit: { max: 500, timeWindow: "1 minute" } } },
-        async (request, reply) => {
-            reply.code(200).send({ ok: true });
-            handleMetaWebhook(request.body as never, fastify).catch((err) =>
-                fastify.log.error({ err }, "meta webhook processing error"),
+        async (_request, reply) => {
+            await queues.inbox().add(
+                "inbox:meta",
+                { type: "inbox:meta", payload: _request.body as Record<string, unknown> },
+                { attempts: 3, backoff: { type: "exponential", delay: 5_000 } },
             );
+            return reply.code(200).send({ ok: true });
         },
     );
 };

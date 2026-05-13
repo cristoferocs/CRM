@@ -20,12 +20,14 @@ import { knowledgeRoutes } from "./modules/ai/knowledge/knowledge.routes.js";
 import { agentRoutes } from "./modules/ai/agents/agent.routes.js";
 import { insightsRoutes } from "./modules/ai/insights/insights.routes.js";
 import { integrationsRoutes } from "./modules/integrations/integrations.routes.js";
+import { uploadsRoutes } from "./modules/uploads/uploads.routes.js";
 import { authPlugin } from "./plugins/auth.plugin.js";
 import { corsPlugin } from "./plugins/cors.plugin.js";
 import { rateLimitPlugin } from "./plugins/rate-limit.plugin.js";
 import { swaggerPlugin } from "./plugins/swagger.plugin.js";
 import { closeQueues } from "./queue/queues.js";
 import { createAutomationWorker } from "./queue/workers/automation.worker.js";
+import { createInboxWorker } from "./queue/workers/inbox.worker.js";
 import { createKnowledgeWorker } from "./queue/workers/knowledge.worker.js";
 import { initializeSocket } from "./websocket/socket.js";
 
@@ -71,6 +73,7 @@ await app.register(knowledgeRoutes, { prefix: "/knowledge-bases" });
 await app.register(agentRoutes, { prefix: "/agents" });
 await app.register(insightsRoutes, { prefix: "/insights" });
 await app.register(integrationsRoutes, { prefix: "/integrations" });
+await app.register(uploadsRoutes, { prefix: "/uploads" });
 
 const socket = initializeSocket(app.server, app);
 const port = Number(process.env.PORT ?? 3333);
@@ -78,6 +81,7 @@ const host = process.env.HOST ?? "0.0.0.0";
 
 // Start background workers
 const automationWorker = createAutomationWorker();
+const inboxWorker = createInboxWorker();
 const knowledgeWorker = createKnowledgeWorker();
 
 const shutdown = async (signal: NodeJS.Signals) => {
@@ -86,6 +90,7 @@ const shutdown = async (signal: NodeJS.Signals) => {
   try {
     socket.close();
     await automationWorker.close();
+    await inboxWorker.close();
     await knowledgeWorker.close();
     await closeQueues();
     await app.close();
