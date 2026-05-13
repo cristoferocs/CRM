@@ -95,3 +95,28 @@ export const RejectFlowSchema = z.object({
     reason: z.string().min(1),
 });
 export type RejectFlowInput = z.infer<typeof RejectFlowSchema>;
+
+export const RefineFlowSchema = z.object({
+    changes: z.record(z.string(), z.unknown()),
+    notes: z.string().optional(),
+});
+export type RefineFlowInput = z.infer<typeof RefineFlowSchema>;
+
+// ---------------------------------------------------------------------------
+// Session filters (query params for GET /agents/:id/sessions)
+// ---------------------------------------------------------------------------
+
+export const SessionFiltersSchema = z.object({
+    status: z.enum(["ACTIVE", "THINKING", "WAITING_USER", "HANDOFF", "ENDED"]).optional(),
+    goalAchieved: z
+        .string()
+        .transform((v) => (v === "true" ? true : v === "false" ? false : undefined))
+        .optional(),
+    from: z.string().datetime().optional(),
+    to: z.string().datetime().optional(),
+    limit: z
+        .string()
+        .transform((v) => Math.min(200, Math.max(1, Number(v))))
+        .optional(),
+});
+export type SessionFiltersInput = z.infer<typeof SessionFiltersSchema>;

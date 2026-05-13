@@ -8,12 +8,17 @@ import {
     StartLearningSchema,
     ApproveFlowSchema,
     RejectFlowSchema,
+    RefineFlowSchema,
+    SessionFiltersSchema,
 } from "./agent.schema.js";
 import { requireRole } from "../../../lib/permissions.js";
 
 const IdParams = z.object({ id: z.string() });
 const ConvParams = z.object({ conversationId: z.string() });
 const SessionParams = z.object({ sessionId: z.string() });
+const VersionParams = z.object({ id: z.string(), versionId: z.string() });
+const TurnParams = z.object({ id: z.string(), turnId: z.string() });
+const AgentSessionParams = z.object({ id: z.string(), sessionId: z.string() });
 
 export const agentRoutes: FastifyPluginAsync = async (fastify) => {
     const service = new AgentService();
@@ -165,6 +170,16 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
         },
     );
 
+    // GET /agents/:id/learning/status
+    fastify.get(
+        "/:id/learning/status",
+        { onRequest: [fastify.verifyJWT, requireRole("ADMIN")], schema: { params: IdParams } },
+        async (request) => {
+            const { id } = request.params as { id: string };
+            return service.getLearningStatus(id, request.user.orgId!);
+        },
+    );
+
     // GET /agents/:id/learning/jobs
     fastify.get(
         "/:id/learning/jobs",
@@ -189,7 +204,63 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
         },
     );
 
-    // POST /agents/:id/flow-versions/approve
+    // GET /agents/:id/flow-versions/:versionId
+    fastify.get(
+        "/:id/flow-versions/:versionId",
+        { onRequest: [fastify.verifyJWT, requireRole("ADMIN")], schema: { params: VersionParams } },
+        async (request) => {
+            const { id, versionId } = request.params as { id: string; versionId: string };
+            return service.getFlowVersion(id, versionId, request.user.orgId!);
+        },
+    );
+
+    // POST /agents/:id/flow-versions/:versionId/approve
+    fastify.post(
+        "/:id/flow-versions/:versionId/approve",
+        {
+            onRequest: [fastify.verifyJWT, requireRole("ADMIN")],
+            schema: { params: VersionParams, body: ApproveFlowSchema },
+        },
+        async (request) => {
+            const { id, versionId } = request.params as { id: string; versionId: string };
+            return service.approveFlowVersionById(
+                id, versionId, request.user.id!, request.body as never, request.user.orgId!,
+            );
+        },
+    );
+
+    // POST /agents/:id/flow-versions/:versionId/reject
+    fastify.post(
+        "/:id/flow-versions/:versionId/reject",
+        {
+            onRequest: [fastify.verifyJWT, requireRole("ADMIN")],
+            schema: { params: VersionParams, body: RejectFlowSchema },
+        },
+        async (request, reply) => {
+            const { id, versionId } = request.params as { id: string; versionId: string };
+            await service.rejectFlowVersionById(
+                id, versionId, request.body as never, request.user.id!, request.user.orgId!,
+            );
+            return reply.status(204).send();
+        },
+    );
+
+    // PATCH /agents/:id/flow-versions/:versionId/refine
+    fastify.patch(
+        "/:id/flow-versions/:versionId/refine",
+        {
+            onRequest: [fastify.verifyJWT, requireRole("ADMIN")],
+            schema: { params: VersionParams, body: RefineFlowSchema },
+        },
+        async (request) => {
+            const { id, versionId } = request.params as { id: string; versionId: string };
+            return service.refineFlowVersion(
+                id, versionId, request.body as never, request.user.id!, request.user.orgId!,
+            );
+        },
+    );
+
+    // Legacy: POST /agents/:id/flow-versions/approve (uses latest version)
     fastify.post(
         "/:id/flow-versions/approve",
         {
@@ -202,7 +273,7 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
         },
     );
 
-    // POST /agents/:id/flow-versions/reject
+    // Legacy: POST /agents/:id/flow-versions/reject (uses latest version)
     fastify.post(
         "/:id/flow-versions/reject",
         {
@@ -230,17 +301,27 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
         },
     );
 
-    // GET /agents/:id/sessions — all sessions for an agent
+    // GET /agents/:id/sessions — filtered list of sessions
     fastify.get(
         "/:id/sessions",
-        { onRequest: [fastify.verifyJWT], schema: { params: IdParams } },
+        { onRequest: [fastify.verifyJWT], schema: { params: IdParams, querystring: SessionFiltersSchema } },
         async (request) => {
             const { id } = request.params as { id: string };
-            return service.getSessionsForAgent(id, request.user.orgId!);
+            return service.getSessionsFiltered(id, request.user.orgId!, request.query as never);
         },
     );
 
-    // GET /agents/sessions/:sessionId/turns — turn log for a session
+    // GET /agents/:id/sessions/:sessionId — session detail with all turns
+    fastify.get(
+        "/:id/sessions/:sessionId",
+        { onRequest: [fastify.verifyJWT], schema: { params: AgentSessionParams } },
+        async (request) => {
+            const { id, sessionId } = request.params as { id: string; sessionId: string };
+            return service.getSessionDetail(id, sessionId, request.user.orgId!);
+        },
+    );
+
+    // GET /agents/sessions/:sessionId/turns — turn log (legacy, kept for backwards compat)
     fastify.get(
         "/sessions/:sessionId/turns",
         { onRequest: [fastify.verifyJWT], schema: { params: SessionParams } },
@@ -254,159 +335,27 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
     // Performance
     // -----------------------------------------------------------------------
 
-    // GET /agents/:id/performance
+    // GET /agents/:id/performance — aggregated metrics + weekly chart
     fastify.get(
         "/:id/performance",
         { onRequest: [fastify.verifyJWT], schema: { params: IdParams } },
         async (request) => {
             const { id } = request.params as { id: string };
-            return service.getPerformance(id, request.user.orgId!);
-        },
-    );
-};
-
-
-const IdParams = z.object({ id: z.string() });
-const ConvParams = z.object({ conversationId: z.string() });
-
-export const agentRoutes: FastifyPluginAsync = async (fastify) => {
-    const service = new AgentService();
-
-    // POST /agents
-    fastify.post(
-        "/",
-        {
-            onRequest: [fastify.verifyJWT, requireRole("ADMIN")],
-            schema: { body: CreateAgentSchema },
-        },
-        async (request, reply) => {
-            const agent = await service.create(request.body as never, request.user.orgId!);
-            return reply.status(201).send(agent);
+            return service.getWeeklyPerformance(id, request.user.orgId!);
         },
     );
 
-    // GET /agents
+    // -----------------------------------------------------------------------
+    // Turns
+    // -----------------------------------------------------------------------
+
+    // GET /agents/:id/turns/:turnId — detailed reasoning for a specific turn
     fastify.get(
-        "/",
-        { onRequest: [fastify.verifyJWT] },
-        async (request) => service.list(request.user.orgId!),
-    );
-
-    // GET /agents/:id
-    fastify.get(
-        "/:id",
-        {
-            onRequest: [fastify.verifyJWT],
-            schema: { params: IdParams },
-        },
+        "/:id/turns/:turnId",
+        { onRequest: [fastify.verifyJWT], schema: { params: TurnParams } },
         async (request) => {
-            const { id } = request.params as { id: string };
-            return service.findById(id, request.user.orgId!);
-        },
-    );
-
-    // PATCH /agents/:id
-    fastify.patch(
-        "/:id",
-        {
-            onRequest: [fastify.verifyJWT, requireRole("ADMIN")],
-            schema: { params: IdParams, body: UpdateAgentSchema },
-        },
-        async (request) => {
-            const { id } = request.params as { id: string };
-            return service.update(id, request.body as never, request.user.orgId!);
-        },
-    );
-
-    // DELETE /agents/:id
-    fastify.delete(
-        "/:id",
-        {
-            onRequest: [fastify.verifyJWT, requireRole("ADMIN")],
-            schema: { params: IdParams },
-        },
-        async (request, reply) => {
-            const { id } = request.params as { id: string };
-            await service.delete(id, request.user.orgId!);
-            return reply.status(204).send();
-        },
-    );
-
-    // POST /agents/:id/run
-    fastify.post(
-        "/:id/run",
-        {
-            onRequest: [fastify.verifyJWT],
-            schema: { params: IdParams, body: RunAgentSchema },
-        },
-        async (request) => {
-            const { id } = request.params as { id: string };
-            return service.run(id, request.body as never, request.user.orgId!);
-        },
-    );
-
-    // GET /agents/sessions/:conversationId
-    fastify.get(
-        "/sessions/:conversationId",
-        {
-            onRequest: [fastify.verifyJWT],
-            schema: { params: ConvParams },
-        },
-        async (request) => {
-            const { conversationId } = request.params as { conversationId: string };
-            return service.getActiveSession(conversationId);
-        },
-    );
-
-    // PATCH /agents/:id/toggle — activate/deactivate agent
-    fastify.patch(
-        "/:id/toggle",
-        {
-            onRequest: [fastify.verifyJWT, requireRole("ADMIN")],
-            schema: { params: IdParams },
-        },
-        async (request) => {
-            const { id } = request.params as { id: string };
-            return service.toggle(id, request.user.orgId!);
-        },
-    );
-
-    // POST /agents/:id/test — one-shot test without saving
-    fastify.post(
-        "/:id/test",
-        {
-            onRequest: [fastify.verifyJWT, requireRole("ADMIN")],
-            schema: { params: IdParams, body: RunAgentSchema },
-        },
-        async (request) => {
-            const { id } = request.params as { id: string };
-            return service.run(id, request.body as never, request.user.orgId!);
-        },
-    );
-
-    // GET /agents/:id/sessions — list sessions for an agent
-    fastify.get(
-        "/:id/sessions",
-        {
-            onRequest: [fastify.verifyJWT],
-            schema: { params: IdParams },
-        },
-        async (request) => {
-            const { id } = request.params as { id: string };
-            return service.getSessionsForAgent(id, request.user.orgId!);
-        },
-    );
-
-    // GET /agents/:id/performance — performance metrics
-    fastify.get(
-        "/:id/performance",
-        {
-            onRequest: [fastify.verifyJWT],
-            schema: { params: IdParams },
-        },
-        async (request) => {
-            const { id } = request.params as { id: string };
-            return service.getPerformance(id, request.user.orgId!);
+            const { turnId } = request.params as { id: string; turnId: string };
+            return service.getTurnDetail(turnId, request.user.orgId!);
         },
     );
 };

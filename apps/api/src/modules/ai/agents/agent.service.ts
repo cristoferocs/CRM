@@ -1,5 +1,6 @@
 import { AgentRepository } from "./agent.repository.js";
 import { superAgentRunner } from "./super-agent.runner.js";
+import { flowValidator } from "./learning/flow-validator.js";
 import { queues } from "../../../queue/queues.js";
 import { prisma } from "../../../lib/prisma.js";
 import type {
@@ -9,6 +10,8 @@ import type {
     StartLearningInput,
     ApproveFlowInput,
     RejectFlowInput,
+    RefineFlowInput,
+    SessionFiltersInput,
 } from "./agent.schema.js";
 
 export class AgentService {
@@ -243,4 +246,204 @@ export class AgentService {
         await this.findById(agentId, orgId);
         return this.repo.getPerformanceMetrics(agentId);
     }
+
+    // -----------------------------------------------------------------------
+    // Learning status (progress + preview of patterns found so far)
+    // -----------------------------------------------------------------------
+
+    async getLearningStatus(agentId: string, orgId: string) {
+        await this.findById(agentId, orgId);
+        const jobs = await this.repo.listLearningJobs(agentId);
+        const latest = jobs[0] ?? null;
+        if (!latest) return { status: "NONE", analyzedCount: 0, total: 0, preview: null };
+
+        const total = (latest.conversationIds as string[]).length;
+        const preview =
+            latest.result &&
+                typeof latest.result === "object" &&
+                "stages" in latest.result
+                ? {
+                    stages: ((latest.result as Record<string, unknown>)["stages"] as unknown[])?.slice(0, 3),
+                    confidence: (latest.result as Record<string, unknown>)["metadata"]
+                        ? ((latest.result as Record<string, unknown>)["metadata"] as Record<string, unknown>)[
+                        "confidence"
+                        ]
+                        : null,
+                }
+                : null;
+
+        return {
+            status: latest.status,
+            analyzedCount: latest.analyzedCount,
+            total,
+            progress: total > 0 ? Math.round((latest.analyzedCount / total) * 100) : 0,
+            error: latest.error ?? null,
+            startedAt: latest.startedAt,
+            completedAt: latest.completedAt,
+            preview,
+        };
+    }
+
+    // -----------------------------------------------------------------------
+    // Flow versions — by specific ID
+    // -----------------------------------------------------------------------
+
+    async getFlowVersion(agentId: string, versionId: string, orgId: string) {
+        await this.findById(agentId, orgId);
+        const version = await prisma.agentFlowVersion.findFirst({
+            where: { id: versionId, agentId },
+        });
+        if (!version) {
+            const err = new Error("Versão de fluxo não encontrada") as Error & { statusCode: number };
+            err.statusCode = 404;
+            throw err;
+        }
+        return version;
+    }
+
+    async approveFlowVersionById(
+        agentId: string,
+        versionId: string,
+        userId: string,
+        input: ApproveFlowInput,
+        orgId: string,
+    ) {
+        await this.findById(agentId, orgId);
+        await flowValidator.approveFlow(agentId, versionId, userId, orgId, {
+            flowTemplate: input.flowTemplate,
+            decisionRules: input.decisionRules,
+            notes: input.notes,
+        });
+        return this.findById(agentId, orgId);
+    }
+
+    async rejectFlowVersionById(
+        agentId: string,
+        versionId: string,
+        input: RejectFlowInput,
+        userId: string,
+        orgId: string,
+    ) {
+        await this.findById(agentId, orgId);
+        await flowValidator.rejectFlow(agentId, versionId, { feedback: input.reason }, userId, orgId);
+    }
+
+    async refineFlowVersion(
+        agentId: string,
+        versionId: string,
+        input: RefineFlowInput,
+        userId: string,
+        orgId: string,
+    ) {
+        await this.findById(agentId, orgId);
+        await flowValidator.refineFlow(agentId, versionId, { changes: input.changes, notes: input.notes }, userId, orgId);
+        return this.findById(agentId, orgId);
+    }
+
+    // -----------------------------------------------------------------------
+    // Sessions — filtered list + detail
+    // -----------------------------------------------------------------------
+
+    async getSessionsFiltered(agentId: string, orgId: string, filters: SessionFiltersInput) {
+        await this.findById(agentId, orgId);
+        const where: Record<string, unknown> = { agentId };
+        if (filters.status) where["status"] = filters.status;
+        if (filters.goalAchieved !== undefined) where["goalAchieved"] = filters.goalAchieved;
+        if (filters.from || filters.to) {
+            const range: Record<string, unknown> = {};
+            if (filters.from) range["gte"] = new Date(filters.from);
+            if (filters.to) range["lte"] = new Date(filters.to);
+            where["startedAt"] = range;
+        }
+        return prisma.aIAgentSession.findMany({
+            where: where as never,
+            orderBy: { startedAt: "desc" },
+            take: filters.limit ?? 50,
+        });
+    }
+
+    async getSessionDetail(agentId: string, sessionId: string, orgId: string) {
+        await this.findById(agentId, orgId);
+        const session = await prisma.aIAgentSession.findFirst({
+            where: { id: sessionId, agentId, orgId },
+            include: { turns: { orderBy: { createdAt: "asc" } } },
+        });
+        if (!session) {
+            const err = new Error("Sessão não encontrada") as Error & { statusCode: number };
+            err.statusCode = 404;
+            throw err;
+        }
+        return session;
+    }
+
+    async getTurnDetail(turnId: string, orgId: string) {
+        const turn = await prisma.aIAgentTurn.findFirst({
+            where: { id: turnId, session: { orgId } },
+            include: { session: { select: { agentId: true, orgId: true } } },
+        });
+        if (!turn) {
+            const err = new Error("Turn não encontrado") as Error & { statusCode: number };
+            err.statusCode = 404;
+            throw err;
+        }
+        return turn;
+    }
+
+    // -----------------------------------------------------------------------
+    // Weekly performance chart (last 8 weeks)
+    // -----------------------------------------------------------------------
+
+    async getWeeklyPerformance(agentId: string, orgId: string) {
+        await this.findById(agentId, orgId);
+
+        const eightWeeksAgo = new Date();
+        eightWeeksAgo.setDate(eightWeeksAgo.getDate() - 56);
+
+        const sessions = await prisma.aIAgentSession.findMany({
+            where: { agentId, orgId, startedAt: { gte: eightWeeksAgo } },
+            select: { startedAt: true, goalAchieved: true, status: true, turnCount: true },
+        });
+
+        // Group by ISO week (Monday)
+        const byWeek = new Map<
+            string,
+            { total: number; completed: number; handoffs: number; turnSum: number }
+        >();
+
+        for (const s of sessions) {
+            const monday = getMondayKey(s.startedAt);
+            const bucket = byWeek.get(monday) ?? { total: 0, completed: 0, handoffs: 0, turnSum: 0 };
+            bucket.total++;
+            if (s.goalAchieved) bucket.completed++;
+            if (s.status === "HANDOFF") bucket.handoffs++;
+            bucket.turnSum += s.turnCount;
+            byWeek.set(monday, bucket);
+        }
+
+        const weeks = [...byWeek.entries()]
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .map(([week, b]) => ({
+                week,
+                total: b.total,
+                completed: b.completed,
+                handoffs: b.handoffs,
+                autonomyRate: b.total > 0 ? b.completed / b.total : 0,
+                avgTurns: b.total > 0 ? b.turnSum / b.total : 0,
+            }));
+
+        const base = await this.repo.getPerformanceMetrics(agentId);
+        return { ...base, weeks };
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Module helper
+// ---------------------------------------------------------------------------
+
+function getMondayKey(date: Date): string {
+    const d = new Date(date);
+    const day = d.getDay();
+    d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString().slice(0, 10);
 }

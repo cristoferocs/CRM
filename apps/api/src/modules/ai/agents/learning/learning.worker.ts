@@ -10,6 +10,7 @@
 import { Worker, type Job } from "bullmq";
 import { getRedis } from "../../../../lib/redis.js";
 import { flowLearner } from "./flow-learner.js";
+import { continuousLearner } from "./continuous-learner.js";
 import { AgentRepository } from "../agent.repository.js";
 import { getIO } from "../../../../websocket/socket.js";
 import { prisma } from "../../../../lib/prisma.js";
@@ -18,6 +19,16 @@ const agentRepo = new AgentRepository();
 
 interface LearnJobData {
     jobId: string;
+    agentId: string;
+    orgId: string;
+}
+
+interface SessionLearnJobData {
+    sessionId: string;
+    orgId: string;
+}
+
+interface WeeklyRefinementJobData {
     agentId: string;
     orgId: string;
 }
@@ -106,11 +117,17 @@ async function handleFailedJob(job: Job<LearnJobData>, err: Error): Promise<void
 }
 
 export function createFlowLearningWorker() {
-    const worker = new Worker<LearnJobData>(
+    const worker = new Worker<LearnJobData | SessionLearnJobData | WeeklyRefinementJobData>(
         "learning",
         async (job) => {
             if (job.name === "agent:learn") {
-                await processLearnJob(job);
+                await processLearnJob(job as Job<LearnJobData>);
+            } else if (job.name === "agent:session-learn") {
+                const { sessionId, orgId } = job.data as SessionLearnJobData;
+                await continuousLearner.learnFromSession(sessionId, orgId);
+            } else if (job.name === "agent:weekly") {
+                const { agentId, orgId } = job.data as WeeklyRefinementJobData;
+                await continuousLearner.weeklyRefinement(agentId, orgId);
             }
         },
         {
