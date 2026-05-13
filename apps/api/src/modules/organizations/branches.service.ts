@@ -2,7 +2,7 @@ import { BranchesRepository } from "./branches.repository.js";
 import type { CreateBranchInput, UpdateBranchInput } from "./branches.schema.js";
 
 export class BranchesService {
-    constructor(private readonly repo = new BranchesRepository()) {}
+    constructor(private readonly repo = new BranchesRepository()) { }
 
     async list(orgId: string) {
         const branches = await this.repo.list(orgId);

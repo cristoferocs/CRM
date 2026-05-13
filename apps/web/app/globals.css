@@ -4,6 +4,12 @@
 
 :root {
   color-scheme: light;
+
+  /* White-label color tokens — overridden at runtime by WhiteLabelProvider */
+  --color-primary: #5b5bff;
+  --color-primary-hover: #5b5bffcc;
+  --color-secondary: #00e5c0;
+  --color-accent: #ff5b8d;
 }
 
 * {

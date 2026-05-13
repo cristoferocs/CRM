@@ -11,6 +11,7 @@ import {
     type OrganizationSettingsInput,
 } from "./module.schema.js";
 import { branchesRoutes } from "./branches.routes.js";
+import { whiteLabelRoutes } from "./white-label.routes.js";
 import { requireRole, requireSameOrg } from "../../lib/permissions.js";
 
 const IdParams = z.object({ id: z.string() });
@@ -105,4 +106,7 @@ export const organizationsRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Branch sub-routes: /organizations/:orgId/branches/...
     await fastify.register(branchesRoutes);
+
+    // White-label sub-routes: /organizations/:orgId/white-label/...
+    await fastify.register(whiteLabelRoutes);
 };

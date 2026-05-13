@@ -6,6 +6,7 @@ import Fastify from "fastify";
 import type { HealthResponse } from "@crm-base/shared";
 import { authRoutes } from "./modules/auth/module.routes.js";
 import { automationsRoutes } from "./modules/automations/module.routes.js";
+import { whiteLabelPublicRoutes } from "./modules/organizations/white-label.routes.js";
 import { contactsRoutes } from "./modules/contacts/module.routes.js";
 import { departmentsRoutes } from "./modules/departments/module.routes.js";
 import { inboxRoutes } from "./modules/inbox/module.routes.js";
@@ -49,6 +50,7 @@ app.get<{ Reply: HealthResponse }>("/health", async () => ({
 }));
 
 await app.register(authRoutes, { prefix: "/auth" });
+await app.register(whiteLabelPublicRoutes, { prefix: "/public" });
 await app.register(organizationsRoutes, { prefix: "/organizations" });
 await app.register(usersRoutes, { prefix: "/users" });
 await app.register(departmentsRoutes, { prefix: "/departments" });

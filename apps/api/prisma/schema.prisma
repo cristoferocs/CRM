@@ -204,30 +204,32 @@ model Organization {
   id        String   @id @default(cuid())
   name      String
   slug      String   @unique
-  plan      Plan     @default(STARTER)
-  settings  Json     @default("{}")
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  plan                 Plan     @default(STARTER)
+  settings             Json     @default("{}")
+  whiteLabelSettings   Json?    // configurações de identidade visual
+  isActive             Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
-  users         User[]
-  contacts      Contact[]
-  deals         Deal[]
-  conversations Conversation[]
-  departments   Department[]
-  pipelines     Pipeline[]
-  companies     Company[]
-  payments      Payment[]
-  webhooks      Webhook[]
-  automations   Automation[]
-  timeline      TimelineEvent[]
-  auditLogs     AuditLog[]
-  knowledgeBases KnowledgeBase[]
-  aiAgents      AIAgent[]
-  aiInsights    AIInsight[]
-  aiTrainingData AITrainingData[]
+  users            User[]
+  contacts         Contact[]
+  deals            Deal[]
+  conversations    Conversation[]
+  departments      Department[]
+  pipelines        Pipeline[]
+  companies        Company[]
+  payments         Payment[]
+  webhooks         Webhook[]
+  automations      Automation[]
+  timeline         TimelineEvent[]
+  auditLogs        AuditLog[]
+  knowledgeBases   KnowledgeBase[]
+  aiAgents         AIAgent[]
+  aiInsights       AIInsight[]
+  aiTrainingData   AITrainingData[]
   messageTemplates MessageTemplate[]
-  branches      Branch[]
+  branches         Branch[]
+  whiteLabelDomain WhiteLabelDomain?
 
   @@map("organizations")
 }
@@ -716,6 +718,23 @@ model AuditLog {
   @@index([userId])
   @@index([resource, resourceId])
   @@map("audit_logs")
+}
+
+// =============================================================================
+// WHITE LABEL
+// =============================================================================
+
+model WhiteLabelDomain {
+  id         String   @id @default(cuid())
+  domain     String   @unique  // ex: "crm.agenciaxyz.com.br"
+  isVerified Boolean  @default(false)
+  orgId      String   @unique  // uma org = um domínio customizado
+  createdAt  DateTime @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([domain])
+  @@map("white_label_domains")
 }
 
 // =============================================================================

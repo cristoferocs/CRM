@@ -10,7 +10,25 @@ async function main() {
     // ---------------------------------------------------------------------------
     const org = await prisma.organization.upsert({
         where: { slug: 'demo' },
-        update: {},
+        update: {
+            whiteLabelSettings: {
+                platformName: 'Demo CRM',
+                logoUrl: null,
+                faviconUrl: null,
+                primaryColor: '#5b5bff',
+                secondaryColor: '#00e5c0',
+                accentColor: '#ff5b8d',
+                loginBackground: null,
+                loginTagline: 'Gerencie seus clientes com inteligência',
+                emailFromName: 'Demo CRM',
+                emailFromAddress: 'noreply@democrm.com',
+                emailFooter: '© 2026 Demo CRM. Todos os direitos reservados.',
+                supportEmail: 'suporte@democrm.com',
+                supportWhatsapp: null,
+                termsUrl: null,
+                privacyUrl: null,
+            },
+        },
         create: {
             name: 'Demo Organization',
             slug: 'demo',
@@ -20,6 +38,23 @@ async function main() {
                 timezone: 'America/Sao_Paulo',
                 currency: 'BRL',
                 language: 'pt-BR',
+            },
+            whiteLabelSettings: {
+                platformName: 'Demo CRM',
+                logoUrl: null,
+                faviconUrl: null,
+                primaryColor: '#5b5bff',
+                secondaryColor: '#00e5c0',
+                accentColor: '#ff5b8d',
+                loginBackground: null,
+                loginTagline: 'Gerencie seus clientes com inteligência',
+                emailFromName: 'Demo CRM',
+                emailFromAddress: 'noreply@democrm.com',
+                emailFooter: '© 2026 Demo CRM. Todos os direitos reservados.',
+                supportEmail: 'suporte@democrm.com',
+                supportWhatsapp: null,
+                termsUrl: null,
+                privacyUrl: null,
             },
         },
     })
@@ -131,6 +166,21 @@ async function main() {
         })
         console.log(`  ↳ Stage ${stage.order}: ${stage.name}`)
     }
+
+    // ---------------------------------------------------------------------------
+    // White Label domain for local development
+    // ---------------------------------------------------------------------------
+    await prisma.whiteLabelDomain.upsert({
+        where: { domain: 'localhost' },
+        update: { orgId: org.id, isVerified: true },
+        create: {
+            domain: 'localhost',
+            orgId: org.id,
+            isVerified: true,
+        },
+    })
+
+    console.log(`✅ WhiteLabelDomain: localhost → ${org.name} (verified)`)
 
     console.log('\n🎉 Seed completed successfully!')
 }
