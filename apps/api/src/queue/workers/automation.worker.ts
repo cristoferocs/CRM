@@ -10,9 +10,14 @@ import {
 } from "../../modules/automations/stage-automation.executor.js";
 import { StageRulesArraySchema } from "../../modules/pipeline/stage-automation.schema.js";
 import { prisma } from "../../lib/prisma.js";
+import { logger } from "../../lib/logger.js";
+import { runWithContext } from "../../lib/request-context.js";
+import { reqIdFromJob } from "../queues.js";
+import { captureFromWorker } from "../../lib/sentry.js";
 import type { StageAutomationRule, StageAutomationTrigger } from "@crm-base/shared";
 
 const automationsService = new AutomationsService();
+const workerLog = logger.child({ worker: "automation" });
 
 // ---------------------------------------------------------------------------
 // Stage-automation processor
@@ -134,11 +139,14 @@ async function processLegacyAutomationJob(
 // ---------------------------------------------------------------------------
 
 async function processAutomationJob(job: Job<unknown>): Promise<void> {
-    if (job.name in STAGE_TRIGGERS) {
-        await processStageAutomationJob(job as Job<StageAutomationJobData>);
-        return;
-    }
-    await processLegacyAutomationJob(job as Job<AutomationJobData>);
+    const reqId = reqIdFromJob(job) ?? `auto-${job.id ?? "noid"}`;
+    return runWithContext({ reqId }, async () => {
+        if (job.name in STAGE_TRIGGERS) {
+            await processStageAutomationJob(job as Job<StageAutomationJobData>);
+            return;
+        }
+        await processLegacyAutomationJob(job as Job<AutomationJobData>);
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -156,18 +164,29 @@ export function createAutomationWorker(): Worker {
     );
 
     worker.on("completed", (job) => {
-        console.info(`[automation-worker] Job ${job.id} (${job.name}) completed.`);
+        workerLog.info({ jobId: job.id, jobName: job.name, reqId: reqIdFromJob(job) }, "job completed");
     });
 
     worker.on("failed", (job, err) => {
-        console.error(
-            `[automation-worker] Job ${job?.id} (${job?.name}) failed (attempt ${job?.attemptsMade}):`,
-            err.message,
+        const reqId = job ? reqIdFromJob(job) : undefined;
+        workerLog.error(
+            { jobId: job?.id, jobName: job?.name, attempt: job?.attemptsMade, reqId, err },
+            "job failed",
         );
+        // Only report the final attempt — earlier ones may succeed on retry.
+        if (job && job.attemptsMade >= (job.opts?.attempts ?? 1)) {
+            captureFromWorker(err, {
+                worker: "automation",
+                jobId: job?.id,
+                jobType: job?.name,
+                reqId,
+            });
+        }
     });
 
     worker.on("error", (err) => {
-        console.error("[automation-worker] Worker error:", err);
+        workerLog.error({ err }, "worker error");
+        captureFromWorker(err, { worker: "automation" });
     });
 
     return worker;

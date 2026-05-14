@@ -1,4 +1,6 @@
 import "dotenv/config";
+import { initSentry, sentry } from "./lib/sentry.js";
+initSentry();
 import helmet from "@fastify/helmet";
 import multipart from "@fastify/multipart";
 import { serializerCompiler, validatorCompiler } from "@fastify/type-provider-zod";
@@ -45,14 +47,76 @@ import {
 } from "./queue/workers/session-cleanup.worker.js";
 import { initializeSocket } from "./websocket/socket.js";
 
+import { randomUUID } from "node:crypto";
+
 const app = Fastify({
   logger: {
-    level: process.env.LOG_LEVEL ?? "info"
+    level: process.env.LOG_LEVEL ?? "info",
+  },
+  // Generate a stable request ID for every request and trust an upstream
+  // x-request-id when present (so traces survive the front -> API -> worker hop).
+  genReqId: (req) => {
+    const existing =
+      (req.headers["x-request-id"] as string | undefined) ??
+      (req.headers["x-correlation-id"] as string | undefined);
+    return existing && existing.length <= 128 ? existing : randomUUID();
+  },
+  requestIdHeader: "x-request-id",
+  requestIdLogLabel: "reqId",
+  disableRequestLogging: false,
+});
+
+// Echo the request id back so the front-end can surface it in error toasts /
+// support requests, and so anything downstream can correlate.
+app.addHook("onSend", async (request, reply) => {
+  reply.header("x-request-id", request.id);
+});
+
+// Bind reqId / authenticated user to AsyncLocalStorage so logs, queue
+// helpers, and provider wrappers can read it without explicit threading.
+import { requestContext } from "./lib/request-context.js";
+app.addHook("onRequest", (request, _reply, done) => {
+  requestContext.run(
+    { reqId: request.id, orgId: request.user?.orgId, userId: request.user?.id, role: request.user?.role },
+    () => done(),
+  );
+});
+// JWT hooks populate request.user after onRequest, so refresh the store
+// once authentication has run and the user is known.
+app.addHook("preHandler", async (request) => {
+  const ctx = requestContext.getStore();
+  if (ctx && request.user) {
+    ctx.orgId = request.user.orgId;
+    ctx.userId = request.user.id;
+    ctx.role = request.user.role;
   }
 });
 
 app.setValidatorCompiler(validatorCompiler);
 app.setSerializerCompiler(serializerCompiler);
+
+// Send 5xx exceptions and unexpected throws to Sentry with full request context.
+// 4xx / validation errors are *not* reported — they are by definition expected.
+app.setErrorHandler((error: import("fastify").FastifyError, request, reply) => {
+  const statusCode = error.statusCode ?? 500;
+  if (statusCode >= 500) {
+    sentry.withScope((scope) => {
+      scope.setTag("reqId", request.id);
+      scope.setTag("route", request.routeOptions?.url ?? request.url);
+      scope.setTag("method", request.method);
+      if (request.user?.orgId) scope.setTag("orgId", request.user.orgId);
+      if (request.user?.id) scope.setUser({ id: request.user.id });
+      sentry.captureException(error);
+    });
+    request.log.error({ err: error, reqId: request.id }, "unhandled error");
+  }
+  reply.code(statusCode).send({
+    statusCode,
+    error: error.name ?? "Error",
+    message: statusCode >= 500 ? "Internal Server Error" : error.message,
+    reqId: request.id,
+  });
+});
 
 await app.register(corsPlugin);
 await app.register(helmet, {

@@ -3,6 +3,7 @@ import type { Server as HttpServer } from "node:http";
 import { Server as SocketServer } from "socket.io";
 import { createAdapter } from "@socket.io/redis-adapter";
 import { getRedis } from "../lib/redis.js";
+import { captureFromSocket } from "../lib/sentry.js";
 
 let io: SocketServer | null = null;
 
@@ -33,8 +34,18 @@ export function initializeSocket(server: HttpServer, fastify: FastifyInstance) {
         fastify.log.error({ error }, "failed to enable socket.io redis adapter");
     }
 
+    io.engine.on("connection_error", (err: Error) => {
+        fastify.log.error({ err }, "socket.io connection error");
+        captureFromSocket(err, { event: "connection_error" });
+    });
+
     io.on("connection", (socket) => {
         fastify.log.info({ socketId: socket.id }, "websocket connected");
+
+        socket.on("error", (err: Error) => {
+            fastify.log.error({ err, socketId: socket.id }, "socket error");
+            captureFromSocket(err, { event: "socket_error" });
+        });
 
         // -----------------------------------------------------------------
         // Room join helpers

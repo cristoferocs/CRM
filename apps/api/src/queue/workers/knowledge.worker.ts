@@ -6,9 +6,14 @@ import { learnObjections } from "../../modules/ai/insights/analyzers/objection.a
 import { learnBestApproaches } from "../../modules/ai/insights/analyzers/approach.analyzer.js";
 import { runAgent } from "../../modules/ai/agents/agent.runner.js";
 import { InboxService } from "../../modules/inbox/module.service.js";
+import { logger } from "../../lib/logger.js";
+import { runWithContext } from "../../lib/request-context.js";
+import { reqIdFromJob } from "../queues.js";
+import { captureFromWorker } from "../../lib/sentry.js";
 
 const knowledgeService = new KnowledgeService();
 const inboxService = new InboxService();
+const workerLog = logger.child({ worker: "knowledge" });
 
 // ---------------------------------------------------------------------------
 // Job data types
@@ -48,52 +53,57 @@ type KnowledgeJobData = IndexDocumentJob | AnalyzeConversationJob | LearnInsight
 // ---------------------------------------------------------------------------
 
 async function processJob(job: Job<KnowledgeJobData>): Promise<void> {
-    const { type } = job.data;
+    const reqId = reqIdFromJob(job) ?? `knowledge-${job.id ?? "noid"}`;
+    return runWithContext({ reqId }, async () => {
+        const { type } = job.data;
 
-    switch (type) {
-        case "knowledge:index": {
-            const { documentId, orgId } = job.data as IndexDocumentJob;
-            console.info(`[knowledge-worker] Indexing document ${documentId}`);
-            await knowledgeService.indexDocument(documentId, orgId);
-            break;
-        }
-
-        case "ai:analyze-conversation": {
-            const { conversationId, orgId } = job.data as AnalyzeConversationJob;
-            console.info(`[knowledge-worker] Analyzing conversation ${conversationId}`);
-            await analyzeConversation(conversationId, orgId);
-            break;
-        }
-
-        case "ai:learn-insights": {
-            const { orgId, period } = job.data as LearnInsightsJob;
-            console.info(`[knowledge-worker] Learning insights for org ${orgId}`);
-            await Promise.allSettled([
-                learnObjections(orgId, period),
-                learnBestApproaches(orgId),
-            ]);
-            break;
-        }
-
-        case "ai:agent-respond": {
-            const { agentId, conversationId, message, contactId, orgId } = job.data as AgentRespondJob;
-            console.info(`[knowledge-worker] Agent ${agentId} responding to conversation ${conversationId}`);
-            const result = await runAgent({ agentId, conversationId, message, contactId, orgId });
-            if (!result.handoff) {
-                // Message already saved by agent runner; also send via inbox channel if needed
-                await inboxService.sendMessage(
-                    conversationId,
-                    { content: result.response, type: "TEXT" },
-                    orgId,
-                    "ai-agent",
-                ).catch(() => { /* best-effort external delivery */ });
+        switch (type) {
+            case "knowledge:index": {
+                const { documentId, orgId } = job.data as IndexDocumentJob;
+                workerLog.info({ documentId, orgId }, "indexing document");
+                await knowledgeService.indexDocument(documentId, orgId);
+                break;
             }
-            break;
-        }
 
-        default:
-            console.warn(`[knowledge-worker] Unknown job type: ${(job.data as { type: string }).type}`);
-    }
+            case "ai:analyze-conversation": {
+                const { conversationId, orgId } = job.data as AnalyzeConversationJob;
+                workerLog.info({ conversationId, orgId }, "analyzing conversation");
+                await analyzeConversation(conversationId, orgId);
+                break;
+            }
+
+            case "ai:learn-insights": {
+                const { orgId, period } = job.data as LearnInsightsJob;
+                workerLog.info({ orgId, period }, "learning insights");
+                await Promise.allSettled([
+                    learnObjections(orgId, period),
+                    learnBestApproaches(orgId),
+                ]);
+                break;
+            }
+
+            case "ai:agent-respond": {
+                const { agentId, conversationId, message, contactId, orgId } = job.data as AgentRespondJob;
+                workerLog.info({ agentId, conversationId, orgId }, "agent responding");
+                const result = await runAgent({ agentId, conversationId, message, contactId, orgId });
+                if (!result.handoff) {
+                    await inboxService.sendMessage(
+                        conversationId,
+                        { content: result.response, type: "TEXT" },
+                        orgId,
+                        "ai-agent",
+                    ).catch(() => { /* best-effort external delivery */ });
+                }
+                break;
+            }
+
+            default:
+                workerLog.warn(
+                    { jobType: (job.data as { type: string }).type },
+                    "unknown job type",
+                );
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -107,18 +117,31 @@ export function createKnowledgeWorker(): Worker<KnowledgeJobData> {
     });
 
     worker.on("completed", (job) => {
-        console.info(`[knowledge-worker] Job ${job.id} (${job.data.type}) completed.`);
-    });
-
-    worker.on("failed", (job, err) => {
-        console.error(
-            `[knowledge-worker] Job ${job?.id} (${job?.data?.type}) failed ` +
-            `(attempt ${job?.attemptsMade}): ${err.message}`,
+        workerLog.info(
+            { jobId: job.id, jobType: job.data.type, reqId: reqIdFromJob(job) },
+            "job completed",
         );
     });
 
+    worker.on("failed", (job, err) => {
+        const reqId = job ? reqIdFromJob(job) : undefined;
+        workerLog.error(
+            { jobId: job?.id, jobType: job?.data?.type, attempt: job?.attemptsMade, reqId, err },
+            "job failed",
+        );
+        if (job && job.attemptsMade >= (job.opts?.attempts ?? 1)) {
+            captureFromWorker(err, {
+                worker: "knowledge",
+                jobId: job?.id,
+                jobType: job?.data?.type,
+                reqId,
+            });
+        }
+    });
+
     worker.on("error", (err) => {
-        console.error("[knowledge-worker] Worker error:", err);
+        workerLog.error({ err }, "worker error");
+        captureFromWorker(err, { worker: "knowledge" });
     });
 
     return worker;

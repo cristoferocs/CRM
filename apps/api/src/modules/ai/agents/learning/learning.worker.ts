@@ -14,8 +14,13 @@ import { continuousLearner } from "./continuous-learner.js";
 import { AgentRepository } from "../agent.repository.js";
 import { getIO } from "../../../../websocket/socket.js";
 import { prisma } from "../../../../lib/prisma.js";
+import { logger } from "../../../../lib/logger.js";
+import { runWithContext } from "../../../../lib/request-context.js";
+import { reqIdFromJob } from "../../../../queue/queues.js";
+import { captureFromWorker } from "../../../../lib/sentry.js";
 
 const agentRepo = new AgentRepository();
+const workerLog = logger.child({ worker: "learning" });
 
 interface LearnJobData {
     jobId: string;
@@ -120,15 +125,18 @@ export function createFlowLearningWorker() {
     const worker = new Worker<LearnJobData | SessionLearnJobData | WeeklyRefinementJobData>(
         "learning",
         async (job) => {
-            if (job.name === "agent:learn") {
-                await processLearnJob(job as unknown as Job<LearnJobData>);
-            } else if (job.name === "agent:session-learn") {
-                const { sessionId, orgId } = job.data as SessionLearnJobData;
-                await continuousLearner.learnFromSession(sessionId, orgId);
-            } else if (job.name === "agent:weekly") {
-                const { agentId, orgId } = job.data as WeeklyRefinementJobData;
-                await continuousLearner.weeklyRefinement(agentId, orgId);
-            }
+            const reqId = reqIdFromJob(job) ?? `learning-${job.id ?? "noid"}`;
+            return runWithContext({ reqId }, async () => {
+                if (job.name === "agent:learn") {
+                    await processLearnJob(job as unknown as Job<LearnJobData>);
+                } else if (job.name === "agent:session-learn") {
+                    const { sessionId, orgId } = job.data as SessionLearnJobData;
+                    await continuousLearner.learnFromSession(sessionId, orgId);
+                } else if (job.name === "agent:weekly") {
+                    const { agentId, orgId } = job.data as WeeklyRefinementJobData;
+                    await continuousLearner.weeklyRefinement(agentId, orgId);
+                }
+            });
         },
         {
             connection: getRedis(),
@@ -137,13 +145,27 @@ export function createFlowLearningWorker() {
     );
 
     worker.on("failed", (job, err) => {
+        const reqId = job ? reqIdFromJob(job) : undefined;
+        workerLog.error(
+            { jobId: job?.id, jobName: job?.name, attempt: job?.attemptsMade, reqId, err },
+            "job failed",
+        );
         if (job) {
             void handleFailedJob(job as unknown as Job<LearnJobData>, err as Error);
+            if (job.attemptsMade >= (job.opts?.attempts ?? 1)) {
+                captureFromWorker(err, {
+                    worker: "learning",
+                    jobId: job?.id,
+                    jobType: job?.name,
+                    reqId,
+                });
+            }
         }
     });
 
     worker.on("error", (err) => {
-        console.error("[FlowLearningWorker] Unhandled error:", err);
+        workerLog.error({ err }, "worker error");
+        captureFromWorker(err, { worker: "learning" });
     });
 
     return worker;

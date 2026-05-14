@@ -23,6 +23,12 @@ import { getRedis } from "../../lib/redis.js";
 import { prisma } from "../../lib/prisma.js";
 import { SuperAgentRunner } from "../../modules/ai/agents/super-agent.runner.js";
 import { InboxService } from "../../modules/inbox/module.service.js";
+import { logger } from "../../lib/logger.js";
+import { runWithContext } from "../../lib/request-context.js";
+import { reqIdFromJob } from "../queues.js";
+import { captureFromWorker } from "../../lib/sentry.js";
+
+const workerLog = logger.child({ worker: "agent-proactive" });
 
 // ---------------------------------------------------------------------------
 // Job data types
@@ -314,14 +320,20 @@ async function processReengagement(job: Job<ReengagementJobData>): Promise<void>
 // ---------------------------------------------------------------------------
 
 async function processJob(job: Job<AgentProactiveJobData>): Promise<void> {
-    switch (job.data.type) {
-        case "proactive_contact":
-            return processProactiveContact(job as Job<ProactiveContactJobData>);
-        case "reengagement":
-            return processReengagement(job as Job<ReengagementJobData>);
-        default:
-            console.warn(`[agent-proactive] Unknown job type: ${(job.data as { type?: string }).type}`);
-    }
+    const reqId = reqIdFromJob(job) ?? `agent-proactive-${job.id ?? "noid"}`;
+    return runWithContext({ reqId }, async () => {
+        switch (job.data.type) {
+            case "proactive_contact":
+                return processProactiveContact(job as Job<ProactiveContactJobData>);
+            case "reengagement":
+                return processReengagement(job as Job<ReengagementJobData>);
+            default:
+                workerLog.warn(
+                    { jobType: (job.data as { type?: string }).type },
+                    "unknown job type",
+                );
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -339,18 +351,31 @@ export function createAgentProactiveWorker() {
     );
 
     worker.on("completed", (job) => {
-        console.info(`[agent-proactive] Job ${job.id} (${job.data.type}) completed`);
-    });
-
-    worker.on("failed", (job, err) => {
-        console.error(
-            `[agent-proactive] Job ${job?.id} (${job?.data?.type}) failed (attempt ${job?.attemptsMade}):`,
-            err.message,
+        workerLog.info(
+            { jobId: job.id, jobType: job.data.type, reqId: reqIdFromJob(job) },
+            "job completed",
         );
     });
 
+    worker.on("failed", (job, err) => {
+        const reqId = job ? reqIdFromJob(job) : undefined;
+        workerLog.error(
+            { jobId: job?.id, jobType: job?.data?.type, attempt: job?.attemptsMade, reqId, err },
+            "job failed",
+        );
+        if (job && job.attemptsMade >= (job.opts?.attempts ?? 1)) {
+            captureFromWorker(err, {
+                worker: "agent-proactive",
+                jobId: job?.id,
+                jobType: job?.data?.type,
+                reqId,
+            });
+        }
+    });
+
     worker.on("error", (err) => {
-        console.error("[agent-proactive] Worker error:", err);
+        workerLog.error({ err }, "worker error");
+        captureFromWorker(err, { worker: "agent-proactive" });
     });
 
     return worker;
