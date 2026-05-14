@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { InboxService } from "./module.service.js";
 import {
     ConversationFiltersSchema,
@@ -17,11 +17,38 @@ import {
 } from "./module.schema.js";
 import { verifyMetaChallenge } from "./webhooks/meta.webhook.js";
 import { queues } from "../../queue/queues.js";
+import {
+    verifyMetaSignature,
+    verifyEvolutionApiKey,
+} from "../../lib/webhook-signatures.js";
+
+declare module "fastify" {
+    interface FastifyRequest {
+        rawBody?: Buffer;
+    }
+}
 
 const IdParams = z.object({ id: z.string() });
 
 export const inboxRoutes: FastifyPluginAsync = async (fastify) => {
     const service = new InboxService();
+
+    // Capture raw body for HMAC verification on webhook routes (scoped to inbox plugin).
+    fastify.addContentTypeParser(
+        "application/json",
+        { parseAs: "buffer" },
+        (req: FastifyRequest, body: Buffer, done) => {
+            req.rawBody = body;
+            try {
+                const parsed = body.length > 0 ? JSON.parse(body.toString("utf8")) : {};
+                done(null, parsed);
+            } catch (err) {
+                const error = err as Error & { statusCode?: number };
+                error.statusCode = 400;
+                done(error, undefined);
+            }
+        },
+    );
 
     // =========================================================================
     // CONVERSATIONS
@@ -151,12 +178,27 @@ export const inboxRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post(
         "/webhooks/evolution",
         { config: { rateLimit: { max: 500, timeWindow: "1 minute" } } },
-        async (_request, reply) => {
+        async (request, reply) => {
+            const expectedKey = process.env.EVOLUTION_WEBHOOK_API_KEY ?? process.env.EVOLUTION_API_KEY;
+            const providedKey =
+                (request.headers["apikey"] as string | undefined) ??
+                (request.headers["x-api-key"] as string | undefined);
+            if (!expectedKey) {
+                request.log.error("EVOLUTION_WEBHOOK_API_KEY not configured — refusing webhook");
+                return reply.code(500).send({ ok: false, error: "webhook_not_configured" });
+            }
+            if (!verifyEvolutionApiKey(providedKey, expectedKey)) {
+                request.log.warn(
+                    { ip: request.ip, hasHeader: !!providedKey },
+                    "Evolution webhook: invalid API key",
+                );
+                return reply.code(401).send({ ok: false, error: "invalid_signature" });
+            }
             // Enqueue the raw payload and return 200 immediately.
             // All processing happens in the inbox worker.
             await queues.inbox().add(
                 "inbox:evolution",
-                { type: "inbox:evolution", payload: _request.body as Record<string, unknown> },
+                { type: "inbox:evolution", payload: request.body as Record<string, unknown> },
                 { attempts: 3, backoff: { type: "exponential", delay: 5_000 } },
             );
             return reply.code(200).send({ ok: true });
@@ -195,10 +237,25 @@ export const inboxRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post(
         "/webhooks/meta",
         { config: { rateLimit: { max: 500, timeWindow: "1 minute" } } },
-        async (_request, reply) => {
+        async (request, reply) => {
+            const appSecret = process.env.META_APP_SECRET;
+            const signature =
+                (request.headers["x-hub-signature-256"] as string | undefined) ??
+                (request.headers["X-Hub-Signature-256"] as string | undefined);
+            if (!appSecret) {
+                request.log.error("META_APP_SECRET not configured — refusing webhook");
+                return reply.code(500).send({ ok: false, error: "webhook_not_configured" });
+            }
+            if (!verifyMetaSignature(request.rawBody, signature, appSecret)) {
+                request.log.warn(
+                    { ip: request.ip, hasHeader: !!signature },
+                    "Meta webhook: invalid HMAC signature",
+                );
+                return reply.code(401).send({ ok: false, error: "invalid_signature" });
+            }
             await queues.inbox().add(
                 "inbox:meta",
-                { type: "inbox:meta", payload: _request.body as Record<string, unknown> },
+                { type: "inbox:meta", payload: request.body as Record<string, unknown> },
                 { attempts: 3, backoff: { type: "exponential", delay: 5_000 } },
             );
             return reply.code(200).send({ ok: true });

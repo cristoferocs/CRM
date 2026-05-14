@@ -675,6 +675,11 @@ export class SuperAgentRunner {
 
         // Retry once if first parse failed
         if (!parsed) {
+            console.warn("[super-agent] invalid JSON from LLM (first attempt)", {
+                model: resp.model,
+                contentLength: resp.content.length,
+                preview: resp.content.slice(0, 240),
+            });
             const retryMessages: ChatMessage[] = [
                 ...messages,
                 { role: "assistant", content: resp.content },
@@ -691,6 +696,13 @@ export class SuperAgentRunner {
                 maxTokens: 2048,
             });
             parsed = safeJsonParse(retry.content);
+            if (!parsed) {
+                console.error("[super-agent] invalid JSON from LLM (retry failed)", {
+                    model: retry.model,
+                    contentLength: retry.content.length,
+                    preview: retry.content.slice(0, 240),
+                });
+            }
             return { parsed, tokensUsed: resp.tokensUsed + retry.tokensUsed, raw: retry.content };
         }
 

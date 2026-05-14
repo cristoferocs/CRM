@@ -136,10 +136,18 @@ export class LeadScoringService {
             where: { orgId, isActive: true },
             select: { id: true },
         });
+        // Run in parallel chunks. Sequential awaits would take ~N seconds for
+        // N contacts (each scoreContact is a few DB round-trips); chunking
+        // at 25 keeps the connection pool happy while shrinking total time
+        // by ~20-25x for orgs with 10k+ contacts.
+        const CONCURRENCY = Number(process.env.LEAD_SCORING_CONCURRENCY ?? 25);
         let errors = 0;
-        for (const contact of contacts) {
-            try { await this.scoreContact(contact.id, orgId); }
-            catch { errors++; }
+        for (let i = 0; i < contacts.length; i += CONCURRENCY) {
+            const chunk = contacts.slice(i, i + CONCURRENCY);
+            const results = await Promise.allSettled(
+                chunk.map((c) => this.scoreContact(c.id, orgId)),
+            );
+            errors += results.filter((r) => r.status === "rejected").length;
         }
         return { processed: contacts.length - errors, errors };
     }

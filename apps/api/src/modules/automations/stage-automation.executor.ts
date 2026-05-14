@@ -458,21 +458,43 @@ export async function persistStageAutomationLog(opts: {
     rule: StageAutomationRule;
     job: StageAutomationJobData;
     results: ActionExecutionResult[];
+    idempotencyKey?: string;
 }) {
     if (opts.job.dryRun) return null;
     const allOk = opts.results.every((r) => r.success);
     const skipped = opts.results.length === 0;
-    return prisma.stageAutomationLog.create({
-        data: {
-            dealId: opts.job.dealId,
-            orgId: opts.job.orgId,
-            stageId: opts.job.stageId,
-            ruleId: opts.rule.id,
-            ruleName: opts.rule.name,
-            trigger: opts.job.trigger,
-            status: skipped ? "SKIPPED" : allOk ? "SUCCESS" : "FAILED",
-            executedActions: opts.results as never,
-            error: opts.results.find((r) => !r.success)?.error ?? null,
-        },
+    try {
+        return await prisma.stageAutomationLog.create({
+            data: {
+                dealId: opts.job.dealId,
+                orgId: opts.job.orgId,
+                stageId: opts.job.stageId,
+                ruleId: opts.rule.id,
+                ruleName: opts.rule.name,
+                trigger: opts.job.trigger,
+                status: skipped ? "SKIPPED" : allOk ? "SUCCESS" : "FAILED",
+                executedActions: opts.results as never,
+                error: opts.results.find((r) => !r.success)?.error ?? null,
+                idempotencyKey: opts.idempotencyKey ?? null,
+            },
+        });
+    } catch (err) {
+        const prismaErr = err as { code?: string };
+        if (prismaErr.code === "P2002" && opts.idempotencyKey) {
+            // Already logged by a previous attempt — no-op.
+            return null;
+        }
+        throw err;
+    }
+}
+
+/**
+ * Looks up whether this (bullmq-job, rule) pair has already been logged.
+ * Used by the worker to short-circuit retries after a crash.
+ */
+export async function findExistingStageAutomationLog(idempotencyKey: string) {
+    return prisma.stageAutomationLog.findUnique({
+        where: { idempotencyKey },
+        select: { id: true, status: true, executedActions: true },
     });
 }

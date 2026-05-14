@@ -61,6 +61,16 @@ async function handleEvolutionUpsert(
     const phone = normalizeJid(key.remoteJid);
     if (!phone) return;
 
+    // Idempotency guard: bail before running any side-effects if this
+    // provider message id was already processed for this org.
+    if (key.id) {
+        const seen = await prisma.message.findFirst({
+            where: { externalId: key.id, conversation: { orgId } },
+            select: { id: true },
+        });
+        if (seen) return;
+    }
+
     const message = data["message"] as Record<string, unknown> | undefined;
     const messageType = data["messageType"] as string;
     const pushName = data["pushName"] as string | undefined;

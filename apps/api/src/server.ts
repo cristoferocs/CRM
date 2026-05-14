@@ -39,6 +39,10 @@ import { createInboxWorker } from "./queue/workers/inbox.worker.js";
 import { createKnowledgeWorker } from "./queue/workers/knowledge.worker.js";
 import { createFlowLearningWorker } from "./modules/ai/agents/learning/learning.worker.js";
 import { createAgentProactiveWorker } from "./queue/workers/agent-proactive.worker.js";
+import {
+  createSessionCleanupWorker,
+  ensureSessionCleanupSchedule,
+} from "./queue/workers/session-cleanup.worker.js";
 import { initializeSocket } from "./websocket/socket.js";
 
 const app = Fastify({
@@ -51,7 +55,31 @@ app.setValidatorCompiler(validatorCompiler);
 app.setSerializerCompiler(serializerCompiler);
 
 await app.register(corsPlugin);
-await app.register(helmet);
+await app.register(helmet, {
+  // The API serves JSON to first-party clients only and the Swagger UI we ship
+  // from `/docs`. Deny everything else by default and explicitly allow inline
+  // assets the Swagger UI requires.
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      baseUri: ["'self'"],
+      frameAncestors: ["'none'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"], // Swagger UI
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      upgradeInsecureRequests: [],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+  strictTransportSecurity:
+    process.env.NODE_ENV === "production"
+      ? { maxAge: 63072000, includeSubDomains: true, preload: true }
+      : false,
+});
 await app.register(multipart, {
   limits: {
     fileSize: Number(process.env.MAX_UPLOAD_SIZE_BYTES ?? 10 * 1024 * 1024)
@@ -101,6 +129,8 @@ const inboxWorker = createInboxWorker();
 const knowledgeWorker = createKnowledgeWorker();
 const learningWorker = createFlowLearningWorker();
 const agentProactiveWorker = createAgentProactiveWorker();
+const sessionCleanupWorker = createSessionCleanupWorker();
+await ensureSessionCleanupSchedule();
 
 const shutdown = async (signal: NodeJS.Signals) => {
   app.log.info({ signal }, "shutting down api");
@@ -113,6 +143,7 @@ const shutdown = async (signal: NodeJS.Signals) => {
     await knowledgeWorker.close();
     await learningWorker.close();
     await agentProactiveWorker.close();
+    await sessionCleanupWorker.close();
     await closeQueues();
     await app.close();
     process.exit(0);

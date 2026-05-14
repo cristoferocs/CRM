@@ -128,9 +128,22 @@ export const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.code(200).send({ received: true, type: event.type });
             } catch (err) {
                 fastify.log.error({ err, gateway }, "webhook processing error");
-                // Always return 200 to prevent gateway retries on our processing errors;
-                // signature failures will re-throw to the framework as 401
-                return reply.code(200).send({ received: false });
+                // Surface the right status to the gateway so it can retry transient
+                // errors (5xx) but stop retrying on auth failures (401) and bad
+                // payloads (400). Returning 200 unconditionally meant we silently
+                // swallowed both spoofing attempts and our own outages.
+                const message = err instanceof Error ? err.message.toLowerCase() : "";
+                if (
+                    message.includes("signature") ||
+                    message.includes("unauthorized") ||
+                    message.includes("invalid token")
+                ) {
+                    return reply.code(401).send({ received: false, error: "invalid_signature" });
+                }
+                if (message.includes("invalid") || message.includes("malformed") || message.includes("schema")) {
+                    return reply.code(400).send({ received: false, error: "invalid_payload" });
+                }
+                return reply.code(500).send({ received: false, error: "processing_error" });
             }
         };
 
