@@ -20,10 +20,12 @@ import { KnowledgeService } from "../knowledge/knowledge.service.js";
 import { AgentRepository } from "./agent.repository.js";
 import { toolRegistry } from "./tool-registry.js";
 import { getIO } from "../../../websocket/socket.js";
+import { fireAutomation } from "../../automations/automation-dispatcher.js";
 
 // side-effect import: registers all tools in toolRegistry
 import "./tools/index.js";
 
+import { applySpecializedDefaults } from "./specialized/index.js";
 import type { ChatMessage } from "../providers/ai-provider.interface.js";
 import type { ToolContext } from "./tool-registry.js";
 
@@ -171,13 +173,22 @@ export class SuperAgentRunner {
         const { agent, session, history: rawHistory, contact, contactDeals, contactPayments, kbResults, trainingData } = ctx;
         const history = rawHistory.map((m) => ({ content: m.content, direction: m.direction as string, sentAt: m.sentAt }));
 
-        const personality = (agent.personality as Record<string, unknown>) ?? {};
-        const requiredDataPoints = (agent.requiredDataPoints as string[]) ?? [];
+        // Apply specialized defaults for CUSTOMER_SUCCESS, RETENTION, UPSELL etc.
+        const specializedAgent = applySpecializedDefaults(agent.type ?? "", {
+            systemPrompt: agent.systemPrompt,
+            enabledTools: agent.enabledTools as string[] | undefined,
+            requiredDataPoints: agent.requiredDataPoints as string[] | undefined,
+            handoffRules: agent.handoffRules as Record<string, unknown> | null | undefined,
+            personality: (agent.personality as Record<string, unknown>) ?? {},
+        });
+
+        const personality = (specializedAgent.personality as Record<string, unknown>) ?? {};
+        const requiredDataPoints = (specializedAgent.requiredDataPoints as string[]) ?? [];
         const maxTurns = agent.maxTurnsBeforeHuman ?? 20;
         const confidenceThreshold = agent.confidenceThreshold ?? 0.75;
-        const handoffRules = (agent.handoffRules as Record<string, unknown>) ?? {};
+        const handoffRules = (specializedAgent.handoffRules as Record<string, unknown>) ?? {};
         const existingCollected = (session.collectedData as Record<string, unknown>) ?? {};
-        const enabledTools = toolRegistry.getEnabled(agent.enabledTools);
+        const enabledTools = toolRegistry.getEnabled(specializedAgent.enabledTools ?? agent.enabledTools);
         const flowTemplate = agent.flowTemplate ?? (agent as Record<string, unknown>)["flowTemplate"] ?? null;
         const decisionRules = (agent as Record<string, unknown>)["decisionRules"] ?? null;
 
@@ -205,7 +216,7 @@ export class SuperAgentRunner {
 
         // Step 3: Reason + Plan (first pass)
         const systemPrompt = this.buildSystemPrompt({
-            agent,
+            agent: { ...agent, systemPrompt: specializedAgent.systemPrompt ?? agent.systemPrompt },
             personality,
             enabledTools,
             flowTemplate,
@@ -664,6 +675,11 @@ export class SuperAgentRunner {
 
         // Retry once if first parse failed
         if (!parsed) {
+            console.warn("[super-agent] invalid JSON from LLM (first attempt)", {
+                model: resp.model,
+                contentLength: resp.content.length,
+                preview: resp.content.slice(0, 240),
+            });
             const retryMessages: ChatMessage[] = [
                 ...messages,
                 { role: "assistant", content: resp.content },
@@ -680,6 +696,13 @@ export class SuperAgentRunner {
                 maxTokens: 2048,
             });
             parsed = safeJsonParse(retry.content);
+            if (!parsed) {
+                console.error("[super-agent] invalid JSON from LLM (retry failed)", {
+                    model: retry.model,
+                    contentLength: retry.content.length,
+                    preview: retry.content.slice(0, 240),
+                });
+            }
             return { parsed, tokensUsed: resp.tokensUsed + retry.tokensUsed, raw: retry.content };
         }
 
@@ -816,6 +839,7 @@ export class SuperAgentRunner {
                 contactId,
                 ...handoffData,
             });
+            fireAutomation("AGENT_HANDOFF", { conversationId, sessionId, agentId, contactId, ...handoffData }, orgId);
         }
 
         if (finalStatus === "ENDED") {
@@ -826,6 +850,7 @@ export class SuperAgentRunner {
                 contactId,
                 reason: goalAchievedReason,
             });
+            fireAutomation("AGENT_GOAL_ACHIEVED", { conversationId, sessionId, agentId, contactId, reason: goalAchievedReason }, orgId);
         }
     }
 

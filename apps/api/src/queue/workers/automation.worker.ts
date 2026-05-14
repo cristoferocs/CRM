@@ -5,6 +5,7 @@ import type { AutomationJobData } from "../../modules/automations/automation.typ
 import {
     runStageAutomationRule,
     persistStageAutomationLog,
+    findExistingStageAutomationLog,
     type StageAutomationJobData,
 } from "../../modules/automations/stage-automation.executor.js";
 import { StageRulesArraySchema } from "../../modules/pipeline/stage-automation.schema.js";
@@ -23,6 +24,11 @@ const STAGE_TRIGGERS: Record<string, StageAutomationTrigger> = {
     "stage.rotting": "rotting",
 };
 
+function buildIdempotencyKey(jobId: string | undefined, ruleId: string): string | undefined {
+    if (!jobId) return undefined;
+    return `stage:${jobId}:${ruleId}`;
+}
+
 async function processStageAutomationJob(
     job: Job<StageAutomationJobData>,
 ): Promise<void> {
@@ -30,8 +36,23 @@ async function processStageAutomationJob(
 
     // Resume path: rule was injected by the wait action's re-enqueue
     if (data.rule) {
+        const idempotencyKey = buildIdempotencyKey(job.id, data.rule.id);
+        if (idempotencyKey && !data.dryRun) {
+            const existing = await findExistingStageAutomationLog(idempotencyKey);
+            if (existing) {
+                console.info(
+                    `[automation-worker] Job ${job.id} (resume) already logged — skipping.`,
+                );
+                return;
+            }
+        }
         const results = await runStageAutomationRule(data.rule, data);
-        await persistStageAutomationLog({ rule: data.rule, job: data, results });
+        await persistStageAutomationLog({
+            rule: data.rule,
+            job: data,
+            results,
+            idempotencyKey,
+        });
         return;
     }
 
@@ -63,6 +84,17 @@ async function processStageAutomationJob(
         // If a specific rule was requested (dry-run / test), restrict to it
         if (data.ruleId && rule.id !== data.ruleId) continue;
 
+        const idempotencyKey = buildIdempotencyKey(job.id, rule.id);
+        if (idempotencyKey && !data.dryRun) {
+            const existing = await findExistingStageAutomationLog(idempotencyKey);
+            if (existing) {
+                console.info(
+                    `[automation-worker] Job ${job.id} rule=${rule.id} already logged — skipping.`,
+                );
+                continue;
+            }
+        }
+
         const results = await runStageAutomationRule(
             rule as StageAutomationRule,
             { ...data, rule: rule as StageAutomationRule },
@@ -71,6 +103,7 @@ async function processStageAutomationJob(
             rule: rule as StageAutomationRule,
             job: data,
             results,
+            idempotencyKey,
         });
     }
 }
@@ -91,10 +124,8 @@ async function processLegacyAutomationJob(
 
     await automationsService.execute(
         automationId,
-        contactId,
-        dealId,
+        { contactId, dealId, orgId, ...metadata },
         orgId,
-        metadata,
     );
 }
 

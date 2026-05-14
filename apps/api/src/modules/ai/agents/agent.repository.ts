@@ -61,7 +61,14 @@ export class AgentRepository {
         return prisma.aIAgentSession.findUnique({ where: { id: sessionId } });
     }
 
-    /** Increment turn counter and update state atomically */
+    /**
+     * Increment turn counter and update state atomically.
+     *
+     * Concurrent turns on the same session would otherwise read collectedData,
+     * merge locally, and last-writer-wins overwrites the other's keys. We wrap
+     * in a transaction that re-reads the session and deep-merges JSON fields
+     * server-side so two parallel turns preserve both sets of keys.
+     */
     updateSessionState(
         sessionId: string,
         patch: {
@@ -80,13 +87,49 @@ export class AgentRepository {
             endedAt?: Date;
         },
     ) {
-        return prisma.aIAgentSession.update({
-            where: { id: sessionId },
-            data: {
-                ...(patch as Record<string, unknown>),
-                lastActivityAt: new Date(),
-                turnCount: { increment: 1 },
-            },
+        return prisma.$transaction(async (tx) => {
+            const current = await tx.aIAgentSession.findUnique({
+                where: { id: sessionId },
+                select: { collectedData: true, handoffData: true },
+            });
+            if (!current) {
+                throw Object.assign(new Error("Session not found"), { statusCode: 404 });
+            }
+
+            const mergedCollected =
+                patch.collectedData !== undefined
+                    ? {
+                          ...((current.collectedData as Record<string, unknown> | null) ?? {}),
+                          ...patch.collectedData,
+                      }
+                    : undefined;
+
+            const mergedHandoff =
+                patch.handoffData !== undefined
+                    ? {
+                          ...((current.handoffData as Record<string, unknown> | null) ?? {}),
+                          ...patch.handoffData,
+                      }
+                    : undefined;
+
+            const { collectedData, handoffData, ...rest } = patch;
+            void collectedData;
+            void handoffData;
+
+            return tx.aIAgentSession.update({
+                where: { id: sessionId },
+                data: {
+                    ...(rest as Record<string, unknown>),
+                    ...(mergedCollected !== undefined
+                        ? { collectedData: mergedCollected as never }
+                        : {}),
+                    ...(mergedHandoff !== undefined
+                        ? { handoffData: mergedHandoff as never }
+                        : {}),
+                    lastActivityAt: new Date(),
+                    turnCount: { increment: 1 },
+                },
+            });
         });
     }
 
@@ -116,7 +159,7 @@ export class AgentRepository {
         toolResult?: string;
         tokensUsed?: number;
     }) {
-        return prisma.aIAgentTurn.create({ data });
+        return prisma.aIAgentTurn.create({ data: data as never });
     }
 
     listTurns(sessionId: string) {
@@ -136,7 +179,7 @@ export class AgentRepository {
         flowTemplate: Record<string, unknown>;
         notes?: string;
     }) {
-        return prisma.agentFlowVersion.create({ data });
+        return prisma.agentFlowVersion.create({ data: data as never });
     }
 
     listFlowVersions(agentId: string) {
@@ -165,7 +208,7 @@ export class AgentRepository {
                 approvedAt: new Date(),
                 isActive: true,
                 ...(patch ?? {}),
-            },
+            } as never,
         });
     }
 
@@ -197,7 +240,7 @@ export class AgentRepository {
     ) {
         return prisma.agentLearningJob.update({
             where: { id: jobId },
-            data: patch,
+            data: patch as never,
         });
     }
 

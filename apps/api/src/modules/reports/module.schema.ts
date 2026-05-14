@@ -32,6 +32,11 @@ export const dashboardResponseSchema = z.object({
         lastMessageAt: z.string().nullable(),
         unreadCount: z.number(),
     })),
+    openOpportunities: z.object({
+        count: z.number(),
+        totalValue: z.number(),
+        weightedProbability: z.number(),
+    }),
     closingDeals: z.array(z.object({
         id: z.string(),
         title: z.string(),

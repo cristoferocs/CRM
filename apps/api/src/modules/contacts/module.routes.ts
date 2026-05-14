@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { FastifyPluginAsync } from "fastify";
 import { ContactsService } from "./module.service.js";
+import { LeadScoringService } from "./lead-scoring.service.js";
 import {
     ContactFiltersSchema,
     CreateContactSchema,
@@ -23,6 +24,8 @@ const TagParams = z.object({ id: z.string(), tag: z.string() });
 
 export const contactsRoutes: FastifyPluginAsync = async (fastify) => {
     const service = new ContactsService();
+    const leadScoring = new LeadScoringService();
+    const auth = { onRequest: [fastify.verifyJWT] };
 
     // GET /contacts
     fastify.get(
@@ -54,6 +57,39 @@ export const contactsRoutes: FastifyPluginAsync = async (fastify) => {
             return service.getStats(orgId);
         },
     );
+
+    // -----------------------------------------------------------------------
+    // Lead-Scoring routes (must be registered BEFORE /:id)
+    // -----------------------------------------------------------------------
+
+    // GET /contacts/lead-scoring/config
+    fastify.get("/lead-scoring/config", auth, async (req) => {
+        return leadScoring.getConfig(req.user.orgId!);
+    });
+
+    // PUT /contacts/lead-scoring/config
+    fastify.put("/lead-scoring/config", auth, async (req) => {
+        return leadScoring.upsertConfig(req.user.orgId!, req.body as Parameters<typeof leadScoring.upsertConfig>[1]);
+    });
+
+    // POST /contacts/lead-scoring/score-all
+    fastify.post("/lead-scoring/score-all", auth, async (req) => {
+        return leadScoring.scoreAllContacts(req.user.orgId!);
+    });
+
+    // GET /contacts/lead-scoring/leaderboard
+    fastify.get("/lead-scoring/leaderboard", auth, async (req) => {
+        const { limit } = req.query as Record<string, string>;
+        return leadScoring.getLeaderboard(req.user.orgId!, Number(limit ?? 20));
+    });
+
+    // POST /contacts/:id/lead-score  (score a single contact)
+    fastify.post("/:id/lead-score", auth, async (req) => {
+        const { id } = req.params as { id: string };
+        return leadScoring.scoreContact(id, req.user.orgId!);
+    });
+
+    // -----------------------------------------------------------------------
 
     // GET /contacts/:id
     fastify.get(

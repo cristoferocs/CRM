@@ -4,6 +4,7 @@
  * Idempotente: usa upsert/findFirst antes de criar
  */
 
+import "dotenv/config";
 import { PrismaClient, Plan, UserRole } from "@prisma/client";
 import fs from "fs";
 import path from "path";

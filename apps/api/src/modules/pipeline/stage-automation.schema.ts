@@ -37,7 +37,7 @@ export const StageAutomationConditionSchema = z.object({
 });
 
 // We need a recursive schema for groups. We type it manually to avoid `z.lazy` type loss.
-type ConditionGroupShape = {
+export type ConditionGroupShape = {
     kind: "group";
     operator: "AND" | "OR";
     children: Array<

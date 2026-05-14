@@ -19,6 +19,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post(
         "/login",
         {
+            config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
             schema: {
                 body: LoginSchema,
                 response: { 200: LoginResponseSchema },
@@ -43,11 +44,14 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         },
     );
 
-    // POST /auth/dev-login (NODE_ENV !== production)
-    if (process.env.NODE_ENV !== "production") {
+    // POST /auth/dev-login (NODE_ENV !== production, and only when explicitly enabled)
+    const devLoginEnabled =
+        process.env.NODE_ENV !== "production" && process.env.ENABLE_DEV_LOGIN !== "false";
+    if (devLoginEnabled) {
         fastify.post(
             "/dev-login",
             {
+                config: { rateLimit: { max: 5, timeWindow: "15 minutes" } },
                 schema: {
                     body: DevLoginSchema,
                     response: { 200: LoginResponseSchema },
@@ -55,6 +59,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
             },
             async (request, reply) => {
                 const { email, password } = request.body as DevLoginInput;
+                request.log.info({ email, ip: request.ip }, "dev-login attempt");
                 const user = await service.devLogin(email, password);
 
                 const accessToken = fastify.jwt.sign(

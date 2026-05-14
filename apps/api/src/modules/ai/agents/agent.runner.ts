@@ -21,6 +21,21 @@ const agentRepo = new AgentRepository();
 
 const MAX_TOOL_ITERATIONS = 8;
 
+/**
+ * Hard ceiling for total LLM tokens consumed across all turns of a single
+ * agent session. Prevents runaway sessions from costing unbounded $$.
+ * Override via env: AI_MAX_TOKENS_PER_SESSION.
+ */
+const MAX_TOKENS_PER_SESSION = Number(process.env.AI_MAX_TOKENS_PER_SESSION ?? 50_000);
+
+async function getSessionTokensUsed(sessionId: string): Promise<number> {
+    const agg = await prisma.aIAgentTurn.aggregate({
+        where: { sessionId },
+        _sum: { tokensUsed: true },
+    });
+    return agg._sum.tokensUsed ?? 0;
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -301,6 +316,27 @@ export async function runSuperAgent(input: AgentRunInput): Promise<AgentRunResul
     let totalTokens = 0;
     let updatedCollectedData = { ...collectedData };
 
+    const sessionTokensBefore = await getSessionTokensUsed(session.id);
+    if (sessionTokensBefore >= MAX_TOKENS_PER_SESSION) {
+        await agentRepo.endSession(session.id, {
+            reason: `Token budget esgotado para esta sessão (${sessionTokensBefore} / ${MAX_TOKENS_PER_SESSION}).`,
+            outcome: "BUDGET_EXCEEDED",
+        });
+        return {
+            sessionId: session.id,
+            response:
+                "O atendimento automático foi encerrado por limite de uso. Um atendente humano continuará em breve.",
+            reply:
+                "O atendimento automático foi encerrado por limite de uso. Um atendente humano continuará em breve.",
+            handoff: true,
+            handoffReason: "TOKEN_BUDGET_EXCEEDED",
+            tokensUsed: 0,
+            goalAchieved: false,
+            collectedData,
+            missingDataPoints: getMissingDataPoints(requiredDataPoints, collectedData),
+        };
+    }
+
     for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
         const aiResponse = await provider.chat(messages, {
             temperature: agent.temperature,
@@ -309,6 +345,34 @@ export async function runSuperAgent(input: AgentRunInput): Promise<AgentRunResul
         });
         totalTokens += aiResponse.tokensUsed;
         const responseText = aiResponse.content;
+
+        // Check session budget mid-loop. If exceeded after this turn's tokens,
+        // emit what we have and stop early — do not enqueue another LLM call.
+        if (sessionTokensBefore + totalTokens >= MAX_TOKENS_PER_SESSION) {
+            finalResponse = responseText.replace(TOOL_CALL_RE, "").trim() ||
+                "Atingimos o limite do atendimento automático. Vou encaminhar para um atendente.";
+            await agentRepo.createTurn({
+                sessionId: session.id,
+                role: "assistant",
+                content: finalResponse,
+                tokensUsed: aiResponse.tokensUsed,
+            });
+            await agentRepo.endSession(session.id, {
+                reason: "TOKEN_BUDGET_EXCEEDED",
+                outcome: "BUDGET_EXCEEDED",
+            });
+            return {
+                sessionId: session.id,
+                response: finalResponse,
+                reply: finalResponse,
+                handoff: true,
+                handoffReason: "TOKEN_BUDGET_EXCEEDED",
+                tokensUsed: totalTokens,
+                goalAchieved: false,
+                collectedData: updatedCollectedData,
+                missingDataPoints: getMissingDataPoints(requiredDataPoints, updatedCollectedData),
+            };
+        }
 
         // Extract any data points the model identified
         updatedCollectedData = parseCollectedDataUpdate(responseText, updatedCollectedData);

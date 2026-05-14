@@ -135,3 +135,73 @@ export function useDeleteContact() {
         },
     });
 }
+
+// ── Contact detail: timeline, deals, conversations ───────────────────────────
+
+export interface ContactTimelineEvent {
+    id: string;
+    type: string;
+    title: string;
+    description: string | null;
+    metadata: Record<string, unknown>;
+    contactId: string;
+    userId: string | null;
+    orgId: string;
+    createdAt: string;
+    user: { id: string; name: string; avatar: string | null } | null;
+}
+
+export interface ContactDeal {
+    id: string;
+    title: string;
+    value: number | null;
+    status: string;
+    stage: { id: string; name: string; color: string };
+    pipeline: { id: string; name: string };
+    owner: { id: string; name: string; avatar: string | null } | null;
+    createdAt: string;
+}
+
+export interface ContactConversation {
+    id: string;
+    channel: string;
+    status: string;
+    contactId: string;
+    agent: { id: string; name: string; avatar: string | null } | null;
+    messages: { content: string | null; sentAt: string; direction: string }[];
+    createdAt: string;
+    updatedAt: string;
+}
+
+export function useContactTimeline(id: string) {
+    return useQuery({
+        queryKey: ["contacts", id, "timeline"],
+        queryFn: async () => {
+            const { data } = await api.get(`/contacts/${id}/timeline`);
+            return (data.events ?? []) as ContactTimelineEvent[];
+        },
+        enabled: !!id,
+    });
+}
+
+export function useContactDeals(id: string) {
+    return useQuery({
+        queryKey: ["contacts", id, "deals"],
+        queryFn: async () => {
+            const { data } = await api.get(`/contacts/${id}/deals`);
+            return (Array.isArray(data) ? data : []) as ContactDeal[];
+        },
+        enabled: !!id,
+    });
+}
+
+export function useContactConversations(id: string) {
+    return useQuery({
+        queryKey: ["contacts", id, "conversations"],
+        queryFn: async () => {
+            const { data } = await api.get(`/contacts/${id}/conversations`);
+            return (Array.isArray(data) ? data : []) as ContactConversation[];
+        },
+        enabled: !!id,
+    });
+}

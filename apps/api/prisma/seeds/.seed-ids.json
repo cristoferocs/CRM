@@ -1,26 +1,174 @@
 {
-  "orgId": "cmp4fyqcc0000wvlw9a2fyf71",
+  "orgId": "cmp4nb11f0000wv5gaha6ntjc",
   "branches": {
-    "sp": "cmp4fyqcl0002wvlw0grm0r8r",
-    "rj": "cmp4fyqcr0004wvlwrrb8ngir",
-    "bh": "cmp4fyqcv0006wvlwrnli9ivb"
+    "sp": "cmp4nb11m0002wv5g11qsh6pi",
+    "rj": "cmp4nb11s0004wv5giwis6y26",
+    "bh": "cmp4nb11w0006wv5g4llfb85n"
   },
   "departments": {
-    "comercial": "cmp4fyqd10008wvlw00w055lt",
-    "suporte": "cmp4fyqd3000awvlw5gzusq8d",
-    "marketing": "cmp4fyqd6000cwvlw0b7wht6r",
-    "financeiro": "cmp4fyqd9000ewvlwioutw5e4"
+    "comercial": "cmp4nb1210008wv5gw02ttme8",
+    "suporte": "cmp4nb124000awv5g1d7001hf",
+    "marketing": "cmp4nb126000cwv5glu7bd9ze",
+    "financeiro": "cmp4nb129000ewv5gqz4r6rdx"
   },
   "users": {
-    "admin": "cmp4fyqda000gwvlwe06b3o2w",
-    "fernanda": "cmp4fyqdg000iwvlwtgawyk6p",
-    "ricardo": "cmp4fyqdj000kwvlww2j5djc2",
-    "juliana": "cmp4fyqdn000mwvlw71kw63if",
-    "thiago": "cmp4fyqdr000owvlw3z3duhel",
-    "amanda": "cmp4fyqdu000qwvlwuzfb85tz",
-    "bruno": "cmp4fyqdy000swvlweyjb03hm",
-    "patricia": "cmp4fyqe1000uwvlw44gqdygj",
-    "lucas": "cmp4fyqe5000wwvlwjvvsdpyf",
-    "sofia": "cmp4fyqe8000ywvlwrecvh5hs"
-  }
+    "admin": "cmp4nb12b000gwv5gc99zd1jq",
+    "fernanda": "cmp4nb12g000iwv5gkikbzrmo",
+    "ricardo": "cmp4nb12k000kwv5g1b3npudj",
+    "juliana": "cmp4nb12o000mwv5gz80wxhr2",
+    "thiago": "cmp4nb12s000owv5gdlmwsbqy",
+    "amanda": "cmp4nb12v000qwv5gsh0ebqib",
+    "bruno": "cmp4nb12z000swv5gtrnhjy98",
+    "patricia": "cmp4nb132000uwv5gswxnc85d",
+    "lucas": "cmp4nb136000wwv5galmcf2ib",
+    "sofia": "cmp4nb13a000ywv5gzt19hon3"
+  },
+  "knowledgeBases": {
+    "kb1": "cmp4ohhbb0001wvf46z843290",
+    "kb2": "cmp4ohhd6000twvf4rn1btw55",
+    "kb3": "cmp4ohhe20019wvf4mqbf4c2q"
+  },
+  "agents": {
+    "sofia": "cmp4ohk510001wveckrvwrgfu",
+    "max": "cmp4ohk5f0007wveczsyuapam",
+    "luna": "cmp4ohk5n000dwvec22jbmnaj"
+  },
+  "pipelines": {
+    "main": "cmp4ohnah0001wvuseclrgdsw",
+    "campaign": "cmp4ohnb3000hwvusv2w8m1xn",
+    "renewal": "cmp4ohnbh000vwvusv4ib3y2x"
+  },
+  "stages": {
+    "main": {
+      "newLead": "cmp4ohnam0003wvusjf2gabza",
+      "contacted": "cmp4ohnap0005wvus75qahy1r",
+      "qualified": "cmp4ohnas0007wvus3shck4fe",
+      "proposal": "cmp4ohnau0009wvusedsz9z97",
+      "negotiation": "cmp4ohnaw000bwvus441v5m13",
+      "won": "cmp4ohnay000dwvusv4myk8b4",
+      "lost": "cmp4ohnb0000fwvustoqntfrx"
+    },
+    "campaign": {
+      "clicked": "cmp4ohnb6000jwvusw05935fb",
+      "firstContact": "cmp4ohnb8000lwvusppin5md9",
+      "interested": "cmp4ohnba000nwvuse9gu2689",
+      "checkout": "cmp4ohnbc000pwvusi4zypkky",
+      "converted": "cmp4ohnbd000rwvus22u9azp9",
+      "discarded": "cmp4ohnbf000twvusdl1vnvpp"
+    },
+    "renewal": {
+      "days90": "cmp4ohnbk000xwvus5tvfpz2a",
+      "days30": "cmp4ohnbm000zwvushxvm0p51",
+      "negotiating": "cmp4ohnbo0011wvuslpody17v",
+      "renewed": "cmp4ohnbp0013wvusixx1b09o",
+      "cancelled": "cmp4ohnbr0015wvuss358v122"
+    }
+  },
+  "contacts": {
+    "camila": "cmp4ohsr00001wvigarz3dhpk",
+    "felipe": "cmp4ohsr40003wvig6lb9tfwu",
+    "isabela": "cmp4ohsr70005wvigzmyigys0",
+    "gabriel": "cmp4ohsra0007wvigob688pl4",
+    "natalia": "cmp4ohsrd0009wvigjtprdmag",
+    "pedro": "cmp4ohsrg000bwvigi64mzfxg",
+    "leticia": "cmp4ohsrj000dwvigbn8tmm10",
+    "diego": "cmp4ohsrm000fwvigbbve0lyg",
+    "mariana": "cmp4ohsro000hwvigj15i3htg",
+    "rafael": "cmp4ohsrr000jwvigg1z2ltey",
+    "luciana": "cmp4ohsru000lwvigkpphfgp8",
+    "rodrigo": "cmp4ohsrx000nwvig5b7w37jg",
+    "beatriz": "cmp4ohsrz000pwvigawvdblqc",
+    "andre": "cmp4ohss2000rwvigjd6293fy",
+    "priscila": "cmp4ohss4000twvig3w7tlfb3",
+    "marcos": "cmp4ohss7000vwvigd860kwf4",
+    "tatiana": "cmp4ohssa000xwvigpqdme1gp",
+    "renato": "cmp4ohssc000zwvigezdbw5qr",
+    "claudia": "cmp4ohssf0011wvigtlz7w191",
+    "henrique": "cmp4ohssh0013wvigcrlpsmvv",
+    "clinica": "cmp4ohssk0015wvigtfk0ysxc",
+    "agencia": "cmp4ohssm0017wvigf9ajk7h8",
+    "tech": "cmp4ohssp0019wvig98jyri35",
+    "apex": "cmp4ohsss001bwvigf4ls4fai",
+    "grupo": "cmp4ohssu001dwvigttn27trb",
+    "loja": "cmp4ohssw001fwvigdxn5l9qp",
+    "imob": "cmp4ohssz001hwvig1stauf93",
+    "studio": "cmp4ohst1001jwvigtseo3d09",
+    "escola": "cmp4ohst4001lwvigz4c0bz6k",
+    "dent": "cmp4ohst7001nwvigvj29v66s"
+  },
+  "deals": {
+    "deal1": "cmp4ohvln0001wvjk0x5vgo77",
+    "deal2": "cmp4ohvlw0005wvjkhwc629rh",
+    "deal3": "cmp4ohvm20009wvjk1h2xe0k2",
+    "deal4": "cmp4ohvm8000dwvjksm5gr5e1",
+    "deal5": "cmp4ohvmd000hwvjkqle2qjk2",
+    "deal6": "cmp4ohvml000nwvjk269orvps",
+    "deal7": "cmp4ohvmv000vwvjk0h8kjbeb",
+    "deal8": "cmp4ohvn20011wvjkik64jrq3",
+    "deal9": "cmp4ohvne001bwvjk0rz1kyif",
+    "deal10": "cmp4ohvnn001jwvjkl3wgjwpt",
+    "deal11": "cmp4ohvnv001rwvjkyqtdnces",
+    "deal12": "cmp4ohvo50021wvjkzzy3l1ra",
+    "deal13": "cmp4ohvog002bwvjko38d6xwi",
+    "deal14": "cmp4ohvot002nwvjk7v7sgfy3",
+    "deal15": "cmp4ohvp5002zwvjkj7xbb4g7",
+    "deal16": "cmp4ohvpf0039wvjkje4km6v8",
+    "deal17": "cmp4ohvpl003dwvjko1foer12",
+    "deal18": "cmp4ohvpr003jwvjk4503q989",
+    "deal19": "cmp4ohvpy003pwvjk4xi7qfq5",
+    "deal20": "cmp4ohvq5003vwvjku4eydr4s",
+    "deal21": "cmp4ohvqc0041wvjkknon2uft",
+    "deal22": "cmp4ohvqj0047wvjkb5zmfpph",
+    "deal23": "cmp4ohvqp004bwvjksqb025xi",
+    "deal24": "cmp4ohvqv004hwvjkgj5ofbhw",
+    "deal25": "cmp4ohvr2004nwvjkxof7qvvt"
+  },
+  "conversations": {
+    "conv1": "cmp4oi1om0001wvdo1kpdq8vz",
+    "conv2": "cmp4oi1po000uwvdokmavfu8u",
+    "conv3": "cmp4oi1px0012wvdoymfrghal",
+    "conv4": "cmp4oi1qc001gwvdolugrzce2",
+    "conv5": "cmp4oi1qt001uwvdos6ia7uuj",
+    "conv6": "cmp4oi1r70026wvdoonxtb0im",
+    "conv7": "cmp4oi1rf002ewvdo3a1djfgk",
+    "conv8": "cmp4oi1rn002mwvdofxgldba7",
+    "conv9": "cmp4oi1rw002wwvdoe7hbd57x",
+    "conv10": "cmp4oi1s50034wvdo5ry0ue7b"
+  },
+  "agentSessions": {
+    "session1": "cmp4oi1pf000nwvdo8gaelubu",
+    "session4": "cmp4oi1qq001swvdot7mcgjxs"
+  },
+  "payments": {
+    "p1": "cmp4oi4630001wvkgajfge5x5",
+    "p2": "cmp4oi4680003wvkgzzszvtn1",
+    "p3": "cmp4oi46b0005wvkgpt985oiy",
+    "p4": "cmp4oi46e0007wvkg6pxyycyr",
+    "p5": "cmp4oi46h0009wvkgaz0pvxli",
+    "p6": "cmp4oi46k000bwvkg8a8qot1x",
+    "p7": "cmp4oi46n000dwvkgihgcyt0y",
+    "p8": "cmp4oi46q000fwvkg56h0fuxl",
+    "p9": "cmp4oi46s000hwvkg09ucqn3p",
+    "p10": "cmp4oi46v000jwvkgyyl3djif",
+    "p11": "cmp4oi46y000lwvkga96or7tr",
+    "p12": "cmp4oi470000nwvkgrw8au5nb"
+  },
+  "insights": [
+    "cmp4oi474000pwvkgevkioz8l",
+    "cmp4oi476000rwvkgjtzl8kug",
+    "cmp4oi479000twvkgyy2x6wiy",
+    "cmp4oi47b000vwvkg8kbk5e0l",
+    "cmp4oi47e000xwvkgbvt7ltia",
+    "cmp4oi47g000zwvkgbzvlukj5",
+    "cmp4oi47j0011wvkgeb4eo6tj",
+    "cmp4oi47l0013wvkgi312nbxr"
+  ],
+  "trainingData": [
+    "cmp4oi47o0015wvkgzro93tlw",
+    "cmp4oi47q0017wvkgwo4yp8je",
+    "cmp4oi47t0019wvkgn6mlkbwb",
+    "cmp4oi47v001bwvkgvw4pp2pg",
+    "cmp4oi47x001dwvkgkn6wvkm2",
+    "cmp4oi480001fwvkg2pzfs1t6"
+  ]
 }

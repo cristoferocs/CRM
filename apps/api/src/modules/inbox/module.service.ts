@@ -3,6 +3,7 @@ import { getIO } from "../../websocket/socket.js";
 import { getEvolutionChannel } from "./channels/whatsapp-evolution.channel.js";
 import { queues } from "../../queue/queues.js";
 import { prisma } from "../../lib/prisma.js";
+import { fireAutomation } from "../automations/automation-dispatcher.js";
 import type {
     ConversationFilters,
     CreateConversationInput,
@@ -203,6 +204,12 @@ export class InboxService {
             { status: input.status },
             orgId,
         );
+
+        if (input.status === "OPEN") {
+            fireAutomation("CONVERSATION_OPENED", { conversationId, contactId: conv.contact?.id, channel: conv.channel }, orgId);
+        } else if (input.status === "RESOLVED") {
+            fireAutomation("CONVERSATION_RESOLVED", { conversationId, contactId: conv.contact?.id, channel: conv.channel }, orgId);
+        }
 
         const io = getIO();
         if (io) {

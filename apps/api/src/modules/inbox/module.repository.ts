@@ -186,7 +186,7 @@ export class InboxRepository {
     // Messages
     // -------------------------------------------------------------------------
 
-    createMessage(data: {
+    async createMessage(data: {
         content: string;
         type: string;
         direction: "INBOUND" | "OUTBOUND";
@@ -199,22 +199,40 @@ export class InboxRepository {
         conversationId: string;
         senderId?: string;
     }) {
-        return prisma.message.create({
-            data: {
-                content: data.content,
-                type: data.type as never,
-                direction: data.direction as never,
-                status: (data.status ?? "SENT") as never,
-                externalId: data.externalId ?? null,
-                mediaUrl: data.mediaUrl ?? null,
-                mediaType: data.mediaType ?? null,
-                mediaSize: data.mediaSize ?? null,
-                metadata: (data.metadata ?? {}) as never,
-                conversationId: data.conversationId,
-                senderId: data.senderId ?? null,
-            },
-            select: messageSelect,
-        });
+        // Idempotency: when externalId is present, a unique constraint on
+        // (conversationId, externalId) prevents duplicate webhook processing.
+        // On collision, return the existing row so callers stay idempotent.
+        try {
+            return await prisma.message.create({
+                data: {
+                    content: data.content,
+                    type: data.type as never,
+                    direction: data.direction as never,
+                    status: (data.status ?? "SENT") as never,
+                    externalId: data.externalId ?? null,
+                    mediaUrl: data.mediaUrl ?? null,
+                    mediaType: data.mediaType ?? null,
+                    mediaSize: data.mediaSize ?? null,
+                    metadata: (data.metadata ?? {}) as never,
+                    conversationId: data.conversationId,
+                    senderId: data.senderId ?? null,
+                },
+                select: messageSelect,
+            });
+        } catch (err) {
+            const prismaErr = err as { code?: string };
+            if (prismaErr.code === "P2002" && data.externalId) {
+                const existing = await prisma.message.findFirst({
+                    where: {
+                        conversationId: data.conversationId,
+                        externalId: data.externalId,
+                    },
+                    select: messageSelect,
+                });
+                if (existing) return existing;
+            }
+            throw err;
+        }
     }
 
     async listMessages(

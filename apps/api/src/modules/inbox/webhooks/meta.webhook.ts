@@ -110,6 +110,16 @@ async function handleWhatsAppMessages(
         const phone = msg.from;
         const pushName = contacts.find((c) => c.wa_id === phone)?.profile.name ?? phone;
 
+        // Idempotency: drop already-processed webhook deliveries before
+        // running any side-effects (contact create, socket emit, automation).
+        if (msg.id) {
+            const seen = await prisma.message.findFirst({
+                where: { externalId: msg.id, conversation: { orgId } },
+                select: { id: true },
+            });
+            if (seen) continue;
+        }
+
         const { contact, created: contactCreated } =
             await contactsService.findOrCreateByPhone(phone, orgId, {
                 name: pushName,
@@ -211,6 +221,15 @@ async function handleMessengerEntry(
     const senderId = messaging.sender.id;
     const msg = messaging.message;
     if (!msg) return;
+
+    // Idempotency guard for Instagram/Messenger redeliveries.
+    if (msg.mid) {
+        const seen = await prisma.message.findFirst({
+            where: { externalId: msg.mid, conversation: { orgId } },
+            select: { id: true },
+        });
+        if (seen) return;
+    }
 
     const { contact, created: contactCreated } =
         await contactsService.findOrCreateByPhone(senderId, orgId, {

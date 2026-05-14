@@ -231,7 +231,7 @@ export class ContinuousLearner {
                         agentId: agent.id,
                         newRuleCandidate: analysis.newRuleCandidate,
                         suggestionType: "FLOW_REFINEMENT",
-                    },
+                    } as never,
                     orgId,
                 },
             });
@@ -486,7 +486,7 @@ export class ContinuousLearner {
                 content: buildReportText(report),
                 confidence: 1.0,
                 sourceConversationIds: [],
-                metadata: report as unknown as Record<string, unknown>,
+                metadata: report as never,
                 orgId,
             },
         });

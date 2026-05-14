@@ -64,7 +64,7 @@ export async function execute(
                 agentId: context.agentId,
                 qualificationData: params.qualificationData,
                 previousType: contact.type,
-            },
+            } as never,
             contactId: context.contactId,
             orgId: context.orgId,
         },

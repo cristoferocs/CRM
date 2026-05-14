@@ -666,7 +666,15 @@ export class PipelineRepository {
         await prisma.$transaction(async (tx) => {
             const deal = await tx.deal.findFirst({
                 where: { id: dealId, orgId, isActive: true },
-                select: { id: true, stageId: true, stageEnteredAt: true, contactId: true, stageHistory: true, ownerId: true },
+                select: {
+                    id: true,
+                    stageId: true,
+                    stageEnteredAt: true,
+                    contactId: true,
+                    stageHistory: true,
+                    ownerId: true,
+                    updatedAt: true,
+                },
             });
             if (!deal) throw Object.assign(new Error("Deal not found"), { statusCode: 404 });
 
@@ -687,8 +695,11 @@ export class PipelineRepository {
             };
             const closedAt = toStage.isWon || toStage.isLost ? now : undefined;
 
-            await tx.deal.update({
-                where: { id: dealId },
+            // Optimistic lock: only update if updatedAt has not changed since we read it.
+            // Using updateMany() returns a count and does not throw on zero rows, allowing
+            // us to surface a 409 instead of silently overwriting a concurrent change.
+            const updateResult = await tx.deal.updateMany({
+                where: { id: dealId, orgId, updatedAt: deal.updatedAt },
                 data: {
                     stageId: toStage.id,
                     stageEnteredAt: now,
@@ -700,6 +711,13 @@ export class PipelineRepository {
                     ...(toStage.isLost && context.reason ? { closedReason: context.reason } : {}),
                 },
             });
+
+            if (updateResult.count === 0) {
+                throw Object.assign(
+                    new Error("Deal was modified by another request — refresh and try again"),
+                    { statusCode: 409 },
+                );
+            }
 
             await tx.dealStageMovement.create({
                 data: {
@@ -827,16 +845,32 @@ export class PipelineRepository {
                     }
                 }
 
+                // For deals already marked rotting we previously did N UPDATEs
+                // (one per deal). For orgs with thousands of stuck deals this
+                // pegged the DB. Group by computed rotting-days and run one
+                // updateMany per bucket — usually 1–10 buckets vs. 1000s of UPDATEs.
                 const alreadyRotting = await prisma.deal.findMany({
                     where: { orgId, stageId: stage.id, isActive: true, isRotting: true },
-                    select: { id: true, lastActivityAt: true },
+                    select: { id: true, lastActivityAt: true, rottingDays: true },
                 });
-                for (const d of alreadyRotting) {
-                    const rottingDays = Math.floor(
-                        (Date.now() - new Date(d.lastActivityAt).getTime()) / 86_400_000,
-                    );
-                    await prisma.deal.update({ where: { id: d.id }, data: { rottingDays } });
-                    results.push({ dealId: d.id, stageId: stage.id, action: "updated_days" });
+                if (alreadyRotting.length > 0) {
+                    const buckets = new Map<number, string[]>();
+                    for (const d of alreadyRotting) {
+                        const newDays = Math.floor(
+                            (Date.now() - new Date(d.lastActivityAt).getTime()) / 86_400_000,
+                        );
+                        if (newDays === d.rottingDays) continue; // no-op, save the write
+                        const list = buckets.get(newDays) ?? [];
+                        list.push(d.id);
+                        buckets.set(newDays, list);
+                        results.push({ dealId: d.id, stageId: stage.id, action: "updated_days" });
+                    }
+                    for (const [rottingDays, ids] of buckets) {
+                        await prisma.deal.updateMany({
+                            where: { id: { in: ids } },
+                            data: { rottingDays },
+                        });
+                    }
                 }
             }
         }

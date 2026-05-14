@@ -3,6 +3,7 @@ import { pipelineAgentBridge } from "./pipeline-agent.bridge.js";
 import { getPubSub } from "../../lib/pubsub.js";
 import { getIO } from "../../websocket/socket.js";
 import { queues } from "../../queue/queues.js";
+import { fireAutomation } from "../automations/automation-dispatcher.js";
 import type {
     CreatePipelineInput,
     UpdatePipelineInput,
@@ -432,6 +433,14 @@ export class PipelineService {
             this.publishEvent("deal.created", { dealId: deal.id, orgId, stageId: deal.stageId, pipelineId: deal.pipelineId }),
         ]).catch(() => null);
 
+        fireAutomation("DEAL_CREATED", {
+            dealId: deal.id,
+            contactId: data.contactId,
+            stageId: deal.stageId,
+            pipelineId: deal.pipelineId,
+            value: deal.value,
+        }, orgId);
+
         return deal;
     }
 
@@ -539,6 +548,14 @@ export class PipelineService {
                     movedBy: input.movedBy,
                 }),
             ]).catch(() => null);
+
+            fireAutomation(toStage.isWon ? "DEAL_WON" : "DEAL_LOST", {
+                dealId: id,
+                contactId: deal.contactId,
+                fromStageId: deal.stageId,
+                toStageId: toStage.id,
+                pipelineId: deal.pipelineId,
+            }, orgId);
         } else {
             this.publishEvent("deal.stage_changed", {
                 dealId: id,
@@ -549,6 +566,14 @@ export class PipelineService {
                 movedBy: input.movedBy,
             }).catch(() => null);
         }
+
+        fireAutomation("DEAL_STAGE_CHANGED", {
+            dealId: id,
+            contactId: deal.contactId,
+            fromStageId: deal.stageId,
+            toStageId: toStage.id,
+            pipelineId: deal.pipelineId,
+        }, orgId);
 
         // Notify bridge of movement (learning, coaching insights, kanban socket)
         // Bridge call is fire-and-forget; failures are non-critical
@@ -668,6 +693,13 @@ export class PipelineService {
                     hops: 0,
                 }).catch(() => null);
             }
+
+            fireAutomation("DEAL_ROTTING", {
+                dealId: r.dealId,
+                contactId: deal.contactId,
+                stageId: stage.id,
+                pipelineId: deal.pipelineId,
+            }, orgId);
         }
 
         return { processed: results.length, newlyRotting: newlyRotting.length };

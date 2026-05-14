@@ -102,7 +102,7 @@ async function handleFailedJob(job: Job<LearnJobData>, err: Error): Promise<void
                             type: "AGENT_TOOL_CALL",
                             title: `Aprendizado do agente "${agent.name}" falhou`,
                             description: errorMsg,
-                            metadata: { agentId, jobId, error: errorMsg },
+                            metadata: { agentId, jobId, error: errorMsg } as never,
                             contactId: "system",
                             orgId,
                         },
@@ -121,7 +121,7 @@ export function createFlowLearningWorker() {
         "learning",
         async (job) => {
             if (job.name === "agent:learn") {
-                await processLearnJob(job as Job<LearnJobData>);
+                await processLearnJob(job as unknown as Job<LearnJobData>);
             } else if (job.name === "agent:session-learn") {
                 const { sessionId, orgId } = job.data as SessionLearnJobData;
                 await continuousLearner.learnFromSession(sessionId, orgId);
@@ -133,15 +133,12 @@ export function createFlowLearningWorker() {
         {
             connection: getRedis(),
             concurrency: Number(process.env["LEARNING_WORKER_CONCURRENCY"] ?? 2),
-            settings: {
-                stalledInterval: 60_000,
-            },
         },
     );
 
     worker.on("failed", (job, err) => {
         if (job) {
-            void handleFailedJob(job, err as Error);
+            void handleFailedJob(job as unknown as Job<LearnJobData>, err as Error);
         }
     });
 
