@@ -2,11 +2,16 @@ import { createHash } from "crypto";
 import { promises as dnsPromises } from "dns";
 import { prisma } from "../../lib/prisma.js";
 import { getStorageBucket } from "../../lib/storage.js";
+import { getOrSet, invalidate } from "../../lib/cache.js";
 import type {
     UpdateWhiteLabelInput,
     WhiteLabelPublicSettings,
     WhiteLabelSettings,
 } from "./white-label.schema.js";
+
+const PUBLIC_BY_DOMAIN_TTL = Number(process.env.WHITELABEL_CACHE_TTL_SEC ?? 300);
+const publicDomainKey = (domain: string) => `whitelabel:public:domain:${domain.toLowerCase()}`;
+const settingsKey = (orgId: string) => `whitelabel:settings:${orgId}`;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -91,20 +96,25 @@ export class WhiteLabelService {
     // -----------------------------------------------------------------------
 
     async getSettings(orgId: string): Promise<WhiteLabelSettings> {
-        const row = await prisma.organization.findUnique({
-            where: { id: orgId },
-            select: { whiteLabelSettings: true },
+        return getOrSet(settingsKey(orgId), PUBLIC_BY_DOMAIN_TTL, async () => {
+            const row = await prisma.organization.findUnique({
+                where: { id: orgId },
+                select: { whiteLabelSettings: true },
+            });
+
+            if (!row) {
+                throw Object.assign(new Error("Organization not found."), { statusCode: 404 });
+            }
+
+            if (!row.whiteLabelSettings) {
+                return { ...DEFAULT_WHITE_LABEL };
+            }
+
+            return {
+                ...DEFAULT_WHITE_LABEL,
+                ...(row.whiteLabelSettings as object),
+            } as WhiteLabelSettings;
         });
-
-        if (!row) {
-            throw Object.assign(new Error("Organization not found."), { statusCode: 404 });
-        }
-
-        if (!row.whiteLabelSettings) {
-            return { ...DEFAULT_WHITE_LABEL };
-        }
-
-        return { ...DEFAULT_WHITE_LABEL, ...(row.whiteLabelSettings as object) } as WhiteLabelSettings;
     }
 
     async updateSettings(
@@ -132,6 +142,15 @@ export class WhiteLabelService {
             },
         });
 
+        // Invalidate cached views — both the per-org settings and any
+        // public-by-domain entries that may have resolved through this org.
+        await invalidate(settingsKey(orgId));
+        const domains = await prisma.whiteLabelDomain.findMany({
+            where: { orgId },
+            select: { domain: true },
+        });
+        await Promise.all(domains.map((d) => invalidate(publicDomainKey(d.domain))));
+
         return merged;
     }
 
@@ -140,28 +159,31 @@ export class WhiteLabelService {
     // -----------------------------------------------------------------------
 
     async getPublicByDomain(domain: string): Promise<WhiteLabelPublicSettings | null> {
-        const wlDomain = await prisma.whiteLabelDomain.findUnique({
-            where: { domain },
-            select: {
-                isVerified: true,
-                org: { select: { id: true } },
-            },
+        // Hit twice on every login screen render — heavily cached.
+        return getOrSet(publicDomainKey(domain), PUBLIC_BY_DOMAIN_TTL, async () => {
+            const wlDomain = await prisma.whiteLabelDomain.findUnique({
+                where: { domain },
+                select: {
+                    isVerified: true,
+                    org: { select: { id: true } },
+                },
+            });
+
+            if (!wlDomain?.isVerified) return null;
+
+            const settings = await this.getSettings(wlDomain.org.id);
+
+            return {
+                platformName: settings.platformName,
+                logoUrl: settings.logoUrl,
+                faviconUrl: settings.faviconUrl,
+                primaryColor: settings.primaryColor,
+                secondaryColor: settings.secondaryColor,
+                accentColor: settings.accentColor,
+                loginBackground: settings.loginBackground,
+                loginTagline: settings.loginTagline,
+            };
         });
-
-        if (!wlDomain?.isVerified) return null;
-
-        const settings = await this.getSettings(wlDomain.org.id);
-
-        return {
-            platformName: settings.platformName,
-            logoUrl: settings.logoUrl,
-            faviconUrl: settings.faviconUrl,
-            primaryColor: settings.primaryColor,
-            secondaryColor: settings.secondaryColor,
-            accentColor: settings.accentColor,
-            loginBackground: settings.loginBackground,
-            loginTagline: settings.loginTagline,
-        };
     }
 
     // -----------------------------------------------------------------------

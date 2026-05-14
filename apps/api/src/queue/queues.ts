@@ -7,10 +7,28 @@ type QueueName = "email" | "automations" | "reports" | "knowledge" | "ai" | "inb
 const queueRegistry = new Map<QueueName, Queue>();
 
 /**
- * Returns a Queue whose `.add` is patched to merge the current
- * AsyncLocalStorage reqId into the job payload under `_ctx`. Workers can
- * read `job.data._ctx?.reqId` to stitch logs back to the originating
- * request without callers having to thread it through.
+ * Defaults applied to every `.add` call that doesn't override them. Two
+ * goals: (1) every job retries with exponential backoff before being
+ * declared failed, and (2) terminally-failed jobs are *retained* in
+ * BullMQ's failed set so they can be inspected / replayed instead of
+ * silently disappearing.
+ */
+const DEFAULT_JOB_OPTS = {
+    attempts: 3,
+    backoff: { type: "exponential" as const, delay: 2_000 },
+    removeOnComplete: { count: 1_000 },
+    // Keep up to 5k terminally-failed jobs for replay; older ones expire
+    // by count, not by age, so we never lose the most recent failures.
+    removeOnFail: { count: 5_000 },
+};
+
+/**
+ * Returns a Queue whose `.add` is patched to:
+ *  1. Merge the current AsyncLocalStorage reqId into the job payload
+ *     under `_ctx` so workers can stitch logs back to the originating
+ *     request without callers having to thread it through.
+ *  2. Merge DEFAULT_JOB_OPTS into the job options (callers can still
+ *     override anything by passing their own opts).
  */
 function getQueue(name: QueueName): Queue {
     const existing = queueRegistry.get(name);
@@ -26,7 +44,8 @@ function getQueue(name: QueueName): Queue {
             const ctx = (data as { _ctx?: Record<string, unknown> })._ctx ?? {};
             (data as { _ctx?: Record<string, unknown> })._ctx = { reqId, ...ctx };
         }
-        return originalAdd(jobName, data, opts);
+        const mergedOpts = { ...DEFAULT_JOB_OPTS, ...(opts ?? {}) };
+        return originalAdd(jobName, data, mergedOpts);
     }) as Queue["add"];
 
     queueRegistry.set(name, queue);

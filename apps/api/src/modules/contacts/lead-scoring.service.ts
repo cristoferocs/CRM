@@ -1,5 +1,6 @@
 import { prisma } from "../../lib/prisma.js";
 import { fireAutomation } from "../automations/automation-dispatcher.js";
+import { getOrSet, invalidate } from "../../lib/cache.js";
 
 // ---------------------------------------------------------------------------
 // Scoring weights
@@ -153,7 +154,11 @@ export class LeadScoringService {
     }
 
     async getConfig(orgId: string) {
-        return prisma.leadScoringConfig.findFirst({ where: { orgId } });
+        // Hot read path: every scoreContact() call ends up here.
+        // Cache for 60s — config changes are infrequent (admin-edited).
+        return getOrSet(`lead-scoring:config:${orgId}`, 60, () =>
+            prisma.leadScoringConfig.findFirst({ where: { orgId } }),
+        );
     }
 
     async upsertConfig(orgId: string, data: { weights?: Record<string, number>; hotThreshold?: number; warmThreshold?: number; isActive?: boolean }) {
@@ -165,6 +170,8 @@ export class LeadScoringService {
             // Store custom weights in demographicRules as a JSON override map
             demographicRules: (data.weights ?? undefined) as never,
         };
+        // Invalidate cache on write so the next scoreContact() picks up the new weights.
+        await invalidate(`lead-scoring:config:${orgId}`);
         if (existing) {
             return prisma.leadScoringConfig.update({ where: { id: existing.id }, data: updateData });
         }
