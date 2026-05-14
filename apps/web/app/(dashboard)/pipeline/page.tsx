@@ -353,9 +353,9 @@ export default function PipelinePage() {
             </div>
 
             {/* ── Forecast widget ─────────────────────────────────────────────── */}
-            <div className="shrink-0 border-b border-[var(--rim)] px-6 py-3">
-                <PipelineForecastPanel pipelineId={activePipelineId} />
-            </div>
+            {/* The panel manages its own padding / border so the "hidden"
+                mode collapses cleanly without leaving an empty strip. */}
+            <PipelineForecastPanel pipelineId={activePipelineId} />
 
             {/* ── Filter bar ──────────────────────────────────────────────────── */}
             <div className="shrink-0 border-b border-[var(--rim)] px-6 py-2">
