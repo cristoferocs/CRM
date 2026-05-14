@@ -1225,19 +1225,30 @@ model AIAgentSession {
 }
 
 model AIAgentTurn {
-  id         String   @id @default(cuid())
-  sessionId  String
-  role       String   // user | assistant | tool
-  content    String   @db.Text
-  toolName   String?
-  toolParams Json?
-  toolResult String?  @db.Text
-  tokensUsed Int      @default(0)
-  createdAt  DateTime @default(now())
+  id           String   @id @default(cuid())
+  sessionId    String
+  role         String   // user | assistant | tool
+  content      String   @db.Text
+  toolName     String?
+  toolParams   Json?
+  toolResult   String?  @db.Text
+  /** Combined token count. Kept for backwards compat with rows written
+   *  before the cost-tracking column split (May 2026). */
+  tokensUsed   Int      @default(0)
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+  /** Provider + model that produced this turn (e.g. "anthropic:claude-sonnet-4"). */
+  model        String?
+  /** USD cost computed from token counts × provider pricing at turn time. */
+  costUsd      Decimal  @default(0) @db.Decimal(12, 6)
+  /** Wall-clock milliseconds the LLM/tool call took. Null for the user turn. */
+  durationMs   Int?
+  createdAt    DateTime @default(now())
 
   session AIAgentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId])
+  @@index([createdAt])
   @@map("ai_agent_turns")
 }
 

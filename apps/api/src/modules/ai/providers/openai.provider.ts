@@ -37,9 +37,11 @@ export class OpenAIProvider implements IAIProvider {
         });
 
         const content = response.choices[0]?.message?.content ?? "";
-        const tokensUsed = response.usage?.total_tokens ?? 0;
+        const inputTokens = response.usage?.prompt_tokens ?? 0;
+        const outputTokens = response.usage?.completion_tokens ?? 0;
+        const tokensUsed = response.usage?.total_tokens ?? inputTokens + outputTokens;
 
-        return { content, tokensUsed, model: CHAT_MODEL };
+        return { content, tokensUsed, inputTokens, outputTokens, model: CHAT_MODEL };
     }
 
     async embed(text: string): Promise<number[]> {

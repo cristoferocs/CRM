@@ -16,7 +16,15 @@ export interface ChatOptions {
 
 export interface ChatResponse {
     content: string;
+    /** Combined input + output token count (kept for backwards compat). */
     tokensUsed: number;
+    /**
+     * Split counts when the provider returns them. Set together with
+     * `tokensUsed`. When only `tokensUsed` is known, leave these undefined
+     * and downstream cost computation will estimate a split.
+     */
+    inputTokens?: number;
+    outputTokens?: number;
     model: string;
 }
 

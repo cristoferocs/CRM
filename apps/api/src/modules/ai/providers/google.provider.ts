@@ -124,9 +124,12 @@ export class GoogleProvider implements IAIProvider {
         const candidate = result.response.candidates?.[0];
         const content =
             candidate?.content?.parts?.map((p) => ("text" in p ? p.text : "")).join("") ?? "";
-        const tokensUsed = result.response.usageMetadata?.totalTokenCount ?? 0;
+        const usage = result.response.usageMetadata;
+        const inputTokens = usage?.promptTokenCount ?? 0;
+        const outputTokens = usage?.candidatesTokenCount ?? 0;
+        const tokensUsed = usage?.totalTokenCount ?? inputTokens + outputTokens;
 
-        return { content, tokensUsed, model: CHAT_MODEL };
+        return { content, tokensUsed, inputTokens, outputTokens, model: CHAT_MODEL };
     }
 
     async embed(text: string): Promise<number[]> {

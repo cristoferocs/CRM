@@ -15,6 +15,7 @@
  *  8. Handoff       — emit socket events for human handoff or goal achieved
  */
 import { prisma } from "../../../lib/prisma.js";
+import { computeCost } from "../../../lib/ai-pricing.js";
 import { getAIProvider } from "../ai.factory.js";
 import { KnowledgeService } from "../knowledge/knowledge.service.js";
 import { AgentRepository } from "./agent.repository.js";
@@ -239,12 +240,16 @@ export class SuperAgentRunner {
             },
         ];
 
-        const provider = getAIProvider(
-            (agent.provider as string | undefined) ?? "google",
-        );
+        const providerName = (agent.provider as string | undefined) ?? "google";
+        const provider = getAIProvider(providerName);
 
-        let reactResult = await this.reasonAndPlan(provider, systemPrompt, messages);
+        let reactResult = await this.reasonAndPlan(provider, systemPrompt, messages, providerName);
         totalTokens += reactResult.tokensUsed;
+        let totalCostUsd = reactResult.costUsd;
+        let lastModel = reactResult.model;
+        let lastInputTokens = reactResult.inputTokens;
+        let lastOutputTokens = reactResult.outputTokens;
+        let totalDurationMs = reactResult.durationMs;
 
         let parsed = reactResult.parsed ?? buildFallbackResponse(
             {
@@ -279,8 +284,13 @@ export class SuperAgentRunner {
                 { role: "user", content: toolResultsBlock },
             ];
 
-            const reReasonResult = await this.reasonAndPlan(provider, systemPrompt, reReasonMessages);
+            const reReasonResult = await this.reasonAndPlan(provider, systemPrompt, reReasonMessages, providerName);
             totalTokens += reReasonResult.tokensUsed;
+            totalCostUsd += reReasonResult.costUsd;
+            lastModel = reReasonResult.model;
+            lastInputTokens += reReasonResult.inputTokens;
+            lastOutputTokens += reReasonResult.outputTokens;
+            totalDurationMs += reReasonResult.durationMs;
 
             if (reReasonResult.parsed) {
                 parsed = reReasonResult.parsed;
@@ -358,6 +368,11 @@ export class SuperAgentRunner {
                 latencyMs: Date.now() - t0,
             }),
             tokensUsed: totalTokens,
+            inputTokens: lastInputTokens,
+            outputTokens: lastOutputTokens,
+            model: lastModel,
+            costUsd: totalCostUsd,
+            durationMs: totalDurationMs,
         });
 
         // Also save the user's message as a turn
@@ -664,7 +679,18 @@ export class SuperAgentRunner {
         provider: Awaited<ReturnType<typeof getAIProvider>>,
         systemPrompt: string,
         messages: ChatMessage[],
-    ): Promise<{ parsed: ReActResponse | null; tokensUsed: number; raw: string }> {
+        providerName: string,
+    ): Promise<{
+        parsed: ReActResponse | null;
+        tokensUsed: number;
+        inputTokens: number;
+        outputTokens: number;
+        costUsd: number;
+        model: string;
+        durationMs: number;
+        raw: string;
+    }> {
+        const t0 = Date.now();
         const resp = await provider.chat(messages, {
             systemPrompt,
             temperature: 0.3,
@@ -672,6 +698,11 @@ export class SuperAgentRunner {
         });
 
         let parsed = safeJsonParse(resp.content);
+        let totalIn = resp.inputTokens ?? 0;
+        let totalOut = resp.outputTokens ?? 0;
+        let totalTokens = resp.tokensUsed;
+        let raw = resp.content;
+        let model = resp.model;
 
         // Retry once if first parse failed
         if (!parsed) {
@@ -703,10 +734,31 @@ export class SuperAgentRunner {
                     preview: retry.content.slice(0, 240),
                 });
             }
-            return { parsed, tokensUsed: resp.tokensUsed + retry.tokensUsed, raw: retry.content };
+            totalIn += retry.inputTokens ?? 0;
+            totalOut += retry.outputTokens ?? 0;
+            totalTokens = resp.tokensUsed + retry.tokensUsed;
+            raw = retry.content;
+            model = retry.model;
         }
 
-        return { parsed, tokensUsed: resp.tokensUsed, raw: resp.content };
+        const cost = computeCost({
+            provider: providerName,
+            model,
+            inputTokens: totalIn,
+            outputTokens: totalOut,
+            tokensUsed: totalTokens,
+        });
+
+        return {
+            parsed,
+            tokensUsed: totalTokens,
+            inputTokens: cost.inputTokens,
+            outputTokens: cost.outputTokens,
+            costUsd: cost.costUsd,
+            model: cost.modelKey,
+            durationMs: Date.now() - t0,
+            raw,
+        };
     }
 
     // -------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { FastifyPluginAsync } from "fastify";
 import { AgentService } from "./agent.service.js";
+import { AgentCostService } from "./agent-cost.service.js";
 import {
     CreateAgentSchema,
     UpdateAgentSchema,
@@ -20,8 +21,14 @@ const VersionParams = z.object({ id: z.string(), versionId: z.string() });
 const TurnParams = z.object({ id: z.string(), turnId: z.string() });
 const AgentSessionParams = z.object({ id: z.string(), sessionId: z.string() });
 
+const CostSummaryQuery = z.object({
+    from: z.string().datetime().optional(),
+    to: z.string().datetime().optional(),
+});
+
 export const agentRoutes: FastifyPluginAsync = async (fastify) => {
     const service = new AgentService();
+    const costService = new AgentCostService();
 
     // -----------------------------------------------------------------------
     // CRUD
@@ -356,6 +363,47 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
         async (request) => {
             const { turnId } = request.params as { id: string; turnId: string };
             return service.getTurnDetail(turnId, request.user.orgId!);
+        },
+    );
+
+    // -----------------------------------------------------------------------
+    // Cost tracking
+    // -----------------------------------------------------------------------
+
+    // GET /agents/cost/summary?from=ISO&to=ISO
+    fastify.get(
+        "/cost/summary",
+        {
+            onRequest: [fastify.verifyJWT],
+            schema: { querystring: CostSummaryQuery },
+        },
+        async (request) => {
+            const q = request.query as z.infer<typeof CostSummaryQuery>;
+            return costService.summary(request.user.orgId!, {
+                from: q.from ? new Date(q.from) : undefined,
+                to: q.to ? new Date(q.to) : undefined,
+            });
+        },
+    );
+
+    // GET /agents/cost/budget — current month-to-date spend + configured cap
+    fastify.get(
+        "/cost/budget",
+        { onRequest: [fastify.verifyJWT] },
+        async (request) => {
+            const mtd = await costService.monthToDateCost(request.user.orgId!);
+            const monthlyBudgetUsd = Number(process.env.AI_MONTHLY_BUDGET_USD ?? 0);
+            const alertThreshold = Number(process.env.AI_BUDGET_ALERT_RATIO ?? 0.8);
+            return {
+                monthToDateUsd: mtd,
+                monthlyBudgetUsd: monthlyBudgetUsd > 0 ? monthlyBudgetUsd : null,
+                percentUsed:
+                    monthlyBudgetUsd > 0 ? Math.min(1, mtd / monthlyBudgetUsd) : null,
+                alertThreshold,
+                isOverBudget: monthlyBudgetUsd > 0 && mtd >= monthlyBudgetUsd,
+                isApproachingBudget:
+                    monthlyBudgetUsd > 0 && mtd >= monthlyBudgetUsd * alertThreshold,
+            };
         },
     );
 };

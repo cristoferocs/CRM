@@ -49,10 +49,11 @@ export class AnthropicProvider implements IAIProvider {
                 .map((b) => (b as { type: "text"; text: string }).text)
                 .join("") ?? "";
 
-        const tokensUsed =
-            (response.usage.input_tokens ?? 0) + (response.usage.output_tokens ?? 0);
+        const inputTokens = response.usage.input_tokens ?? 0;
+        const outputTokens = response.usage.output_tokens ?? 0;
+        const tokensUsed = inputTokens + outputTokens;
 
-        return { content, tokensUsed, model: ANTHROPIC_MODEL };
+        return { content, tokensUsed, inputTokens, outputTokens, model: ANTHROPIC_MODEL };
     }
 
     async embed(_text: string): Promise<number[]> {

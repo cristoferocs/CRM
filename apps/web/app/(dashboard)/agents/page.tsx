@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSocket } from "@/hooks/useSocket";
+import { AgentCostPanel } from "@/components/modules/agents/agent-cost-panel";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -408,6 +409,9 @@ export default function AgentsPage() {
                     </Button>
                 </Link>
             </div>
+
+            {/* Cost & budget overview */}
+            <AgentCostPanel />
 
             {/* Grid */}
             {loading ? (
