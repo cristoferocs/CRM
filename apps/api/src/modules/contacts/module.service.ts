@@ -1,4 +1,5 @@
 import { ContactsRepository } from "./module.repository.js";
+import { fireAutomation } from "../automations/automation-dispatcher.js";
 import type {
     ContactFilters,
     CreateContactInput,
@@ -170,6 +171,12 @@ export class ContactsService {
             orgId,
         });
 
+        fireAutomation("CONTACT_CREATED", {
+            contactId: contact.id,
+            source: contact.source,
+            tags: contact.tags,
+        }, orgId);
+
         return contact;
     }
 
@@ -216,6 +223,11 @@ export class ContactsService {
             userId: updatedByUserId,
             orgId,
         });
+
+        fireAutomation("CONTACT_UPDATED", {
+            contactId: id,
+            changedFields: Object.keys(data),
+        }, orgId);
 
         return updated;
     }
@@ -424,6 +436,8 @@ export class ContactsService {
             userId,
             orgId,
         });
+
+        fireAutomation("CONTACT_TAG_ADDED", { contactId: id, tag }, orgId);
 
         return updated;
     }

@@ -20,6 +20,7 @@ import { KnowledgeService } from "../knowledge/knowledge.service.js";
 import { AgentRepository } from "./agent.repository.js";
 import { toolRegistry } from "./tool-registry.js";
 import { getIO } from "../../../websocket/socket.js";
+import { fireAutomation } from "../../automations/automation-dispatcher.js";
 
 // side-effect import: registers all tools in toolRegistry
 import "./tools/index.js";
@@ -826,6 +827,7 @@ export class SuperAgentRunner {
                 contactId,
                 ...handoffData,
             });
+            fireAutomation("AGENT_HANDOFF", { conversationId, sessionId, agentId, contactId, ...handoffData }, orgId);
         }
 
         if (finalStatus === "ENDED") {
@@ -836,6 +838,7 @@ export class SuperAgentRunner {
                 contactId,
                 reason: goalAchievedReason,
             });
+            fireAutomation("AGENT_GOAL_ACHIEVED", { conversationId, sessionId, agentId, contactId, reason: goalAchievedReason }, orgId);
         }
     }
 

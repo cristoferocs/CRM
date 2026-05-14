@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { AutomationsService } from "./automations.service.js";
+import { createAutomationSchema, updateAutomationSchema, formatZodError } from "./module.schema.js";
 
 export const automationsRoutes: FastifyPluginAsync = async (fastify) => {
     const svc = new AutomationsService();
@@ -21,8 +22,9 @@ export const automationsRoutes: FastifyPluginAsync = async (fastify) => {
     // POST /automations
     fastify.post("/", auth, async (req, reply) => {
         const orgId = req.user.orgId!;
-        const body = req.body as Parameters<typeof svc.create>[0];
-        const automation = await svc.create(body, orgId);
+        const parsed = createAutomationSchema.safeParse(req.body);
+        if (!parsed.success) return reply.status(400).send(formatZodError(parsed.error));
+        const automation = await svc.create(parsed.data, orgId);
         return reply.status(201).send(automation);
     });
 
@@ -36,11 +38,12 @@ export const automationsRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // PATCH /automations/:id
-    fastify.patch("/:id", auth, async (req) => {
+    fastify.patch("/:id", auth, async (req, reply) => {
         const orgId = req.user.orgId!;
         const { id } = req.params as { id: string };
-        const body = req.body as Parameters<typeof svc.update>[1];
-        return svc.update(id, body, orgId);
+        const parsed = updateAutomationSchema.safeParse(req.body);
+        if (!parsed.success) return reply.status(400).send(formatZodError(parsed.error));
+        return svc.update(id, parsed.data, orgId);
     });
 
     // DELETE /automations/:id

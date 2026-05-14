@@ -31,6 +31,10 @@ import { rateLimitPlugin } from "./plugins/rate-limit.plugin.js";
 import { swaggerPlugin } from "./plugins/swagger.plugin.js";
 import { closeQueues } from "./queue/queues.js";
 import { createAutomationWorker } from "./queue/workers/automation.worker.js";
+import {
+  createAutomationSchedulerWorker,
+  ensureAutomationScheduler,
+} from "./queue/workers/automation-scheduler.worker.js";
 import { createInboxWorker } from "./queue/workers/inbox.worker.js";
 import { createKnowledgeWorker } from "./queue/workers/knowledge.worker.js";
 import { createFlowLearningWorker } from "./modules/ai/agents/learning/learning.worker.js";
@@ -91,6 +95,8 @@ const host = process.env.HOST ?? "0.0.0.0";
 
 // Start background workers
 const automationWorker = createAutomationWorker();
+const automationSchedulerWorker = createAutomationSchedulerWorker();
+await ensureAutomationScheduler();
 const inboxWorker = createInboxWorker();
 const knowledgeWorker = createKnowledgeWorker();
 const learningWorker = createFlowLearningWorker();
@@ -102,6 +108,7 @@ const shutdown = async (signal: NodeJS.Signals) => {
   try {
     socket.close();
     await automationWorker.close();
+    await automationSchedulerWorker.close();
     await inboxWorker.close();
     await knowledgeWorker.close();
     await learningWorker.close();

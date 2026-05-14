@@ -43,8 +43,8 @@ async function main() {
             triggerType: AutomationTriggerEnum.CONTACT_CREATED,
             isActive: true,
             nodes: [
-                { id: "trigger", type: "trigger", label: "Contato Criado", config: {}, position: { x: 200, y: 80 } },
-                { id: "delay1", type: "delay", label: "Aguardar 5 min", config: { minutes: 5 }, position: { x: 200, y: 200 } },
+                { id: "trigger", type: "trigger", label: "Contato Criado", config: { triggerType: "CONTACT_CREATED" }, position: { x: 200, y: 80 } },
+                { id: "delay1", type: "delay", label: "Aguardar 5 min", config: { amount: 5, unit: "minutes" }, position: { x: 200, y: 200 } },
                 { id: "msg1", type: "send_whatsapp", label: "Mensagem WhatsApp", config: { message: "Olá {{contact.name}}! Bem-vindo à Nexus! 🚀" }, position: { x: 200, y: 320 } },
                 { id: "tag1", type: "add_tag", label: "Tag: boas-vindas", config: { tag: "boas-vindas" }, position: { x: 200, y: 440 } },
             ],
@@ -60,11 +60,11 @@ async function main() {
             triggerType: AutomationTriggerEnum.LEAD_SCORE_CHANGED,
             isActive: true,
             nodes: [
-                { id: "trigger", type: "trigger", label: "Score Alterado", config: { minScore: 30, maxScore: 60 }, position: { x: 200, y: 80 } },
-                { id: "email1", type: "send_email", label: "Email: Case de Sucesso", config: { template: "case_success" }, position: { x: 200, y: 200 } },
-                { id: "delay1", type: "delay", label: "Aguardar 2 dias", config: { days: 2 }, position: { x: 200, y: 320 } },
-                { id: "email2", type: "send_email", label: "Email: Demo Grátis", config: { template: "free_demo" }, position: { x: 200, y: 440 } },
-                { id: "task1", type: "create_task", label: "Tarefa: Follow-up", config: { title: "Follow-up {{contact.name}}" }, position: { x: 200, y: 560 } },
+                { id: "trigger", type: "trigger", label: "Score Alterado", config: { triggerType: "LEAD_SCORE_CHANGED", minScore: 30, maxScore: 60 }, position: { x: 200, y: 80 } },
+                { id: "email1", type: "send_email", label: "Email: Case de Sucesso", config: { subject: "Como a Nexus transformou nossos resultados", body: "Olá {{contact.name}}, veja como nossos clientes triplicaram o pipeline em 90 dias." }, position: { x: 200, y: 200 } },
+                { id: "delay1", type: "delay", label: "Aguardar 2 dias", config: { amount: 2, unit: "days" }, position: { x: 200, y: 320 } },
+                { id: "email2", type: "send_email", label: "Email: Demo Grátis", config: { subject: "Agende uma demo gratuita", body: "Que tal uma demo personalizada, {{contact.name}}?" }, position: { x: 200, y: 440 } },
+                { id: "task1", type: "create_task", label: "Tarefa: Follow-up", config: { title: "Follow-up {{contact.name}}", dueInDays: 1 }, position: { x: 200, y: 560 } },
             ],
             edges: [
                 { from: "trigger", to: "email1" },
@@ -79,10 +79,10 @@ async function main() {
             triggerType: AutomationTriggerEnum.DEAL_ROTTING,
             isActive: true,
             nodes: [
-                { id: "trigger", type: "trigger", label: "Deal Parado", config: { days: 7 }, position: { x: 200, y: 80 } },
-                { id: "notify1", type: "notify_user", label: "Notificar Vendedor", config: { message: "⚠️ Deal {{deal.title}} parado há 7 dias!" }, position: { x: 200, y: 200 } },
+                { id: "trigger", type: "trigger", label: "Deal Parado", config: { triggerType: "DEAL_ROTTING", days: 7 }, position: { x: 200, y: 80 } },
+                { id: "notify1", type: "notify_user", label: "Notificar Vendedor", config: { userId: ids.users.fernanda, message: "⚠️ Deal {{deal.title}} parado há 7 dias!" }, position: { x: 200, y: 200 } },
                 { id: "tag1", type: "add_tag", label: "Tag: atencao", config: { tag: "atencao" }, position: { x: 200, y: 320 } },
-                { id: "task1", type: "create_task", label: "Tarefa: Reativar Deal", config: { title: "Reativar: {{deal.title}}", priority: "HIGH" }, position: { x: 200, y: 440 } },
+                { id: "task1", type: "create_task", label: "Tarefa: Reativar Deal", config: { title: "Reativar: {{deal.title}}", dueInDays: 2 }, position: { x: 200, y: 440 } },
             ],
             edges: [
                 { from: "trigger", to: "notify1" },
@@ -96,15 +96,15 @@ async function main() {
             triggerType: AutomationTriggerEnum.DEAL_WON,
             isActive: true,
             nodes: [
-                { id: "trigger", type: "trigger", label: "Deal Ganho", config: {}, position: { x: 200, y: 80 } },
-                { id: "email1", type: "send_email", label: "Email: Parabéns!", config: { template: "deal_won" }, position: { x: 200, y: 200 } },
-                { id: "agent1", type: "activate_agent", label: "Ativar Agente Sofia", config: { agentType: "customer_success" }, position: { x: 200, y: 320 } },
-                { id: "tag1", type: "add_tag", label: "Tag: cliente", config: { tag: "cliente" }, position: { x: 200, y: 440 } },
+                { id: "trigger", type: "trigger", label: "Deal Ganho", config: { triggerType: "DEAL_WON" }, position: { x: 200, y: 80 } },
+                { id: "email1", type: "send_email", label: "Email: Parabéns!", config: { subject: "Bem-vindo à família Nexus!", body: "Parabéns {{contact.name}}, vamos iniciar seu onboarding." }, position: { x: 200, y: 200 } },
+                { id: "tag1", type: "add_tag", label: "Tag: cliente", config: { tag: "cliente" }, position: { x: 200, y: 320 } },
+                { id: "task1", type: "create_task", label: "Agendar onboarding", config: { title: "Agendar kickoff de onboarding", dueInDays: 1 }, position: { x: 200, y: 440 } },
             ],
             edges: [
                 { from: "trigger", to: "email1" },
-                { from: "email1", to: "agent1" },
-                { from: "agent1", to: "tag1" },
+                { from: "email1", to: "tag1" },
+                { from: "tag1", to: "task1" },
             ],
         },
         {
@@ -113,9 +113,9 @@ async function main() {
             triggerType: AutomationTriggerEnum.PAYMENT_OVERDUE,
             isActive: false,
             nodes: [
-                { id: "trigger", type: "trigger", label: "Pagamento Atrasado", config: {}, position: { x: 200, y: 80 } },
-                { id: "email1", type: "send_email", label: "Email: Lembrete de Pagamento", config: { template: "payment_overdue" }, position: { x: 200, y: 200 } },
-                { id: "delay1", type: "delay", label: "Aguardar 3 dias", config: { days: 3 }, position: { x: 200, y: 320 } },
+                { id: "trigger", type: "trigger", label: "Pagamento Atrasado", config: { triggerType: "PAYMENT_OVERDUE" }, position: { x: 200, y: 80 } },
+                { id: "email1", type: "send_email", label: "Email: Lembrete de Pagamento", config: { subject: "Sua fatura está vencida", body: "Olá {{contact.name}}, identificamos uma pendência financeira." }, position: { x: 200, y: 200 } },
+                { id: "delay1", type: "delay", label: "Aguardar 3 dias", config: { amount: 3, unit: "days" }, position: { x: 200, y: 320 } },
                 { id: "msg1", type: "send_whatsapp", label: "WhatsApp: Urgente", config: { message: "Olá {{contact.name}}, sua fatura está vencida. Regularize para evitar bloqueio." }, position: { x: 200, y: 440 } },
             ],
             edges: [
@@ -130,15 +130,15 @@ async function main() {
             triggerType: AutomationTriggerEnum.MESSAGE_RECEIVED,
             isActive: false,
             nodes: [
-                { id: "trigger", type: "trigger", label: "Mensagem Recebida", config: {}, position: { x: 200, y: 80 } },
-                { id: "ab1", type: "ab_test", label: "Teste A/B", config: { splitA: 50, splitB: 50 }, position: { x: 200, y: 200 } },
+                { id: "trigger", type: "trigger", label: "Mensagem Recebida", config: { triggerType: "MESSAGE_RECEIVED" }, position: { x: 200, y: 80 } },
+                { id: "ab1", type: "ab_test", label: "Teste A/B", config: { splitPercent: 50 }, position: { x: 200, y: 200 } },
                 { id: "msgA", type: "send_whatsapp", label: "Versão A: Formal", config: { message: "Olá! Como posso ajudá-lo?" }, position: { x: 80, y: 320 } },
                 { id: "msgB", type: "send_whatsapp", label: "Versão B: Casual", config: { message: "Oi! Tô aqui pra ajudar 😊" }, position: { x: 320, y: 320 } },
             ],
             edges: [
                 { from: "trigger", to: "ab1" },
-                { from: "ab1", to: "msgA", condition: "A" },
-                { from: "ab1", to: "msgB", condition: "B" },
+                { from: "ab1", to: "msgA", condition: "true" },
+                { from: "ab1", to: "msgB", condition: "false" },
             ],
         },
     ];

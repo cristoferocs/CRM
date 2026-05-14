@@ -1,4 +1,5 @@
 import { prisma } from "../../lib/prisma.js";
+import { fireAutomation } from "../automations/automation-dispatcher.js";
 
 // ---------------------------------------------------------------------------
 // Scoring weights
@@ -117,6 +118,15 @@ export class LeadScoringService {
             where: { id: contactId },
             data: { leadScore: score, leadTemperature: temperature, lastScoredAt: new Date(), scoreHistory: history as never },
         });
+
+        if (contact.leadScore !== score) {
+            fireAutomation("LEAD_SCORE_CHANGED", {
+                contactId,
+                previousScore: contact.leadScore ?? 0,
+                score,
+                temperature,
+            }, orgId);
+        }
 
         return { score, temperature, breakdown };
     }

@@ -23,7 +23,12 @@ import {
     XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useAutomationTemplates, useInstantiateTemplate, type AutomationTemplate } from "@/hooks/useAutomations";
+import {
+    Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from "@/components/ui/dialog";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -56,8 +61,23 @@ const TRIGGER_LABELS: Record<string, string> = {
 
 export default function AutomationsPage() {
     const qc = useQueryClient();
+    const router = useRouter();
     const [search, setSearch] = useState("");
     const [deleteId, setDeleteId] = useState<string | null>(null);
+    const [templatesOpen, setTemplatesOpen] = useState(false);
+    const { data: templates = [], isLoading: tplLoading } = useAutomationTemplates();
+    const instantiate = useInstantiateTemplate();
+
+    const handleUseTemplate = async (tpl: AutomationTemplate) => {
+        try {
+            const created = await instantiate.mutateAsync(tpl);
+            toast.success("Automação criada");
+            setTemplatesOpen(false);
+            router.push(`/automations/${created.id}`);
+        } catch {
+            toast.error("Erro ao criar automação");
+        }
+    };
 
     const { data: automations = [], isLoading } = useQuery({
         queryKey: ["automations"],
@@ -100,12 +120,18 @@ export default function AutomationsPage() {
                     <h1 className="text-2xl font-bold text-t1">Automações</h1>
                     <p className="text-sm text-t3">Crie fluxos automáticos para o seu processo de vendas</p>
                 </div>
-                <Link href="/automations/new">
-                    <Button className="gap-2">
-                        <Plus className="h-4 w-4" />
-                        Nova Automação
+                <div className="flex items-center gap-2">
+                    <Button variant="outline" className="gap-2" onClick={() => setTemplatesOpen(true)}>
+                        <Zap className="h-4 w-4" />
+                        Começar de template
                     </Button>
-                </Link>
+                    <Link href="/automations/new">
+                        <Button className="gap-2">
+                            <Plus className="h-4 w-4" />
+                            Nova Automação
+                        </Button>
+                    </Link>
+                </div>
             </div>
 
             {/* Search */}
@@ -222,6 +248,47 @@ export default function AutomationsPage() {
                     ))}
                 </div>
             )}
+
+            {/* Template gallery */}
+            <Dialog open={templatesOpen} onOpenChange={setTemplatesOpen}>
+                <DialogContent className="max-w-3xl">
+                    <DialogHeader>
+                        <DialogTitle>Galeria de templates</DialogTitle>
+                        <DialogDescription>Comece rápido a partir de um modelo pronto.</DialogDescription>
+                    </DialogHeader>
+                    <div className="mt-4 grid max-h-[60vh] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
+                        {tplLoading && [0, 1, 2, 3].map(i => (
+                            <div key={i} className="h-24 animate-pulse rounded-lg border border-[var(--rim)] bg-surface" />
+                        ))}
+                        {!tplLoading && templates.length === 0 && (
+                            <p className="col-span-full rounded-lg border border-dashed border-[var(--rim)] px-4 py-10 text-center text-xs text-t3">
+                                Nenhum template disponível.
+                            </p>
+                        )}
+                        {templates.map(tpl => (
+                            <button
+                                key={tpl.id}
+                                type="button"
+                                disabled={instantiate.isPending}
+                                onClick={() => handleUseTemplate(tpl)}
+                                className="flex flex-col items-start gap-2 rounded-lg border border-[var(--rim)] bg-surface p-4 text-left transition hover:border-violet/40 hover:shadow-md disabled:opacity-50"
+                            >
+                                <div className="flex items-center gap-2">
+                                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet/10">
+                                        <Zap className="h-4 w-4 text-violet" />
+                                    </div>
+                                    {tpl.category && <Badge variant="outline" className="text-[10px]">{tpl.category}</Badge>}
+                                </div>
+                                <p className="text-sm font-semibold text-t1">{tpl.name}</p>
+                                <p className="text-xs text-t3">{tpl.description}</p>
+                                <span className="mt-1 text-[10px] text-t3">
+                                    {TRIGGER_LABELS[tpl.triggerType] ?? tpl.triggerType} · {tpl.nodes.length} nós
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+                </DialogContent>
+            </Dialog>
 
             {/* Delete dialog */}
             <AlertDialog open={!!deleteId} onOpenChange={open => !open && setDeleteId(null)}>

@@ -10,6 +10,7 @@ import { getIO } from "../../../websocket/socket.js";
 import { queues } from "../../../queue/queues.js";
 import { InboxRepository } from "../module.repository.js";
 import { ContactsService } from "../../contacts/module.service.js";
+import { fireAutomation } from "../../automations/automation-dispatcher.js";
 
 const inboxRepo = new InboxRepository();
 const contactsService = new ContactsService();
@@ -133,6 +134,10 @@ async function handleEvolutionUpsert(
             });
         }
     }
+
+    fireAutomation("MESSAGE_RECEIVED", { contactId: contact.id, conversationId: conversation.id, channel: "WHATSAPP", content: textContent ?? "", messageType: msgType }, orgId);
+    if (textContent) fireAutomation("MESSAGE_KEYWORD", { contactId: contact.id, conversationId: conversation.id, channel: "WHATSAPP", content: textContent }, orgId);
+    if (convCreated) fireAutomation("CONVERSATION_OPENED", { contactId: contact.id, conversationId: conversation.id, channel: "WHATSAPP" }, orgId);
 }
 
 async function handleEvolutionUpdate(
@@ -286,6 +291,10 @@ async function handleWhatsAppMessages(
                 });
             }
         }
+
+        fireAutomation("MESSAGE_RECEIVED", { contactId: contact.id, conversationId: conversation.id, channel: "WHATSAPP_OFFICIAL", content: textContent, messageType: typeMap[msg.type] ?? "TEXT" }, orgId);
+        if (textContent && textContent !== "(mídia)") fireAutomation("MESSAGE_KEYWORD", { contactId: contact.id, conversationId: conversation.id, channel: "WHATSAPP_OFFICIAL", content: textContent }, orgId);
+        if (convCreated) fireAutomation("CONVERSATION_OPENED", { contactId: contact.id, conversationId: conversation.id, channel: "WHATSAPP_OFFICIAL" }, orgId);
     }
 
     // Status updates
@@ -374,6 +383,10 @@ async function handleMessengerEntry(
             });
         }
     }
+
+    fireAutomation("MESSAGE_RECEIVED", { contactId: contact.id, conversationId: conversation.id, channel, content: textContent, messageType: type }, orgId);
+    if (msg.text) fireAutomation("MESSAGE_KEYWORD", { contactId: contact.id, conversationId: conversation.id, channel, content: msg.text }, orgId);
+    if (convCreated) fireAutomation("CONVERSATION_OPENED", { contactId: contact.id, conversationId: conversation.id, channel }, orgId);
 }
 
 export async function processMetaPayload(raw: Record<string, unknown>): Promise<void> {
