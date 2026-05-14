@@ -24,27 +24,24 @@ export default function LoginPage() {
     const router = useRouter();
     const { settings } = useWhiteLabelStore();
     const { loginWithEmail, loginWithGoogle, isDevMode } = useAuth();
-    const { isAuthenticated, token } = useAuthStore();
+    const { isAuthenticated } = useAuthStore();
 
-    // Redirect away only if a token is present AND still valid. We probe
-    // /auth/me before navigating — otherwise a stale persisted Zustand state
-    // (with an expired JWT) would loop between /login and /.
+    // Redirect away only if the persisted state says we're logged in AND the
+    // HttpOnly cookie still validates against /auth/me. We probe the API with
+    // `credentials: "include"` — no JWT ever touches client JS now.
     useEffect(() => {
-        if (!isAuthenticated || !token) return;
+        if (!isAuthenticated) return;
         let cancelled = false;
         (async () => {
             try {
                 const res = await fetch(
                     `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3333"}/auth/me`,
-                    { headers: { Authorization: `Bearer ${token}` } },
+                    { credentials: "include" },
                 );
                 if (cancelled) return;
                 if (res.ok) {
-                    const maxAge = 7 * 24 * 60 * 60;
-                    document.cookie = `crm:access_token=${token}; path=/; SameSite=Lax; max-age=${maxAge}`;
                     router.replace("/");
                 } else {
-                    // Token is stale — clear and stay on /login
                     useAuthStore.getState().clearAuth();
                 }
             } catch {
@@ -54,7 +51,7 @@ export default function LoginPage() {
         return () => {
             cancelled = true;
         };
-    }, [isAuthenticated, token, router]);
+    }, [isAuthenticated, router]);
 
     const [error, setError] = useState<string | null>(null);
 

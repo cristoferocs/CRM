@@ -13,18 +13,21 @@ const WS_URL =
 export function useSocket() {
     const { socket, connected, setSocket, setConnected, setConnecting, disconnect } =
         useSocketStore();
-    const { token } = useAuthStore();
+    // The Socket.IO handshake now uses the HttpOnly auth cookie carried via
+    // `withCredentials`. We gate connection on isAuthenticated rather than a
+    // raw token — the browser never sees the JWT directly anymore.
+    const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
     const mountedRef = useRef(false);
 
     useEffect(() => {
-        if (!token || mountedRef.current) return;
+        if (!isAuthenticated || mountedRef.current) return;
         mountedRef.current = true;
 
         setConnecting(true);
 
         const newSocket = io(WS_URL, {
-            auth: { token },
             transports: ["websocket"],
+            withCredentials: true,
             reconnection: true,
             reconnectionAttempts: 5,
             reconnectionDelay: 1_000,
@@ -50,7 +53,7 @@ export function useSocket() {
             disconnect();
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [token]);
+    }, [isAuthenticated]);
 
     return { socket, connected };
 }

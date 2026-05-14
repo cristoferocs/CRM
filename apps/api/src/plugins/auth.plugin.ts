@@ -1,8 +1,10 @@
 import fastifyJwt from "@fastify/jwt";
+import fastifyCookie from "@fastify/cookie";
 import fp from "fastify-plugin";
 import type { FastifyReply, FastifyRequest, preHandlerHookHandler } from "fastify";
 import { getAuth } from "firebase-admin/auth";
 import { getFirebaseAdmin } from "../lib/firebase.js";
+import { isJtiRevoked, isUserFamilyRevokedSince } from "../lib/jwt-revocation.js";
 
 type PermissionAction = "create" | "read" | "update" | "delete" | "manage" | string;
 
@@ -13,7 +15,12 @@ interface AuthenticatedUser {
     role?: string;
     type?: string;
     permissions?: string[];
+    jti?: string;
+    iat?: number;
 }
+
+export const ACCESS_COOKIE = "crm_access_token";
+export const REFRESH_COOKIE = "crm_refresh_token";
 
 declare module "fastify" {
     interface FastifyInstance {
@@ -45,8 +52,20 @@ export const authPlugin = fp(async (fastify) => {
         );
     }
 
+    const cookieSecret = process.env.COOKIE_SECRET ?? jwtSecret;
+    if (cookieSecret.length < 32) {
+        throw new Error(
+            "COOKIE_SECRET (or JWT_SECRET fallback) must be at least 32 characters long."
+        );
+    }
+
+    await fastify.register(fastifyCookie, { secret: cookieSecret });
     await fastify.register(fastifyJwt, {
-        secret: jwtSecret
+        secret: jwtSecret,
+        // Look for the access token in the HttpOnly cookie first; fall back to
+        // the Authorization: Bearer header so server-to-server / mobile / API
+        // clients that can't carry cookies still work.
+        cookie: { cookieName: ACCESS_COOKIE, signed: false },
     });
 
     fastify.decorate("verifyFirebaseToken", async (request: FastifyRequest, reply: FastifyReply) => {
@@ -66,7 +85,25 @@ export const authPlugin = fp(async (fastify) => {
 
     fastify.decorate("verifyJWT", async (request: FastifyRequest, reply: FastifyReply) => {
         try {
+            // @fastify/jwt reads from cookie first (configured above) then from
+            // Authorization: Bearer. Either source ends up on request.user.
             await request.jwtVerify<AuthenticatedUser>();
+
+            const user = request.user;
+
+            // Reject access tokens whose jti has been explicitly revoked
+            // (e.g. logout, refresh rotation) — looked up in Redis.
+            if (user.jti && (await isJtiRevoked(user.jti))) {
+                request.log.warn({ jti: user.jti }, "revoked jti presented");
+                return reply.code(401).send({ message: "Token revoked" });
+            }
+
+            // Reject tokens issued before the user's whole family was revoked
+            // (used when refresh-token reuse is detected — see auth routes).
+            if (user.id && user.iat && (await isUserFamilyRevokedSince(user.id, user.iat))) {
+                request.log.warn({ userId: user.id, iat: user.iat }, "user family revoked");
+                return reply.code(401).send({ message: "Session revoked" });
+            }
         } catch (error) {
             request.log.warn({ error }, "invalid jwt token");
             return reply.code(401).send({ message: "Invalid JWT token" });

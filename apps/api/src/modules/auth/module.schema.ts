@@ -14,7 +14,8 @@ export const DevLoginSchema = z.object({
 });
 
 export const RefreshSchema = z.object({
-    refreshToken: z.string().min(1),
+    // Optional — refresh routes now also accept the token from the HttpOnly cookie.
+    refreshToken: z.string().min(1).optional(),
 });
 
 // ---------------------------------------------------------------------------

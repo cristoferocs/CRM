@@ -29,18 +29,21 @@ const USE_DEV_LOGIN =
 export function useAuth() {
     const router = useRouter();
     const qc = useQueryClient();
-    const { setAuth, clearAuth, user, token, isAuthenticated, isLoading } =
+    const { setAuth, clearAuth, user, isAuthenticated, isLoading } =
         useAuthStore();
 
     // ── Fetch current user from API ──────────────────────────────────────────
+    // The HttpOnly auth cookie is sent automatically by axios (withCredentials:true)
+    // so we can just hit /auth/me and rely on the server for the source of truth.
     const meQuery = useQuery({
         queryKey: ["auth", "me"],
         queryFn: async () => {
             const { data } = await api.get("/auth/me");
             return data;
         },
-        enabled: !!token,
+        enabled: isAuthenticated,
         staleTime: 1000 * 60 * 5,
+        retry: false,
     });
 
     // ── Login with email/password ────────────────────────────────────────────
@@ -54,10 +57,7 @@ export function useAuth() {
         }) => {
             if (USE_DEV_LOGIN) {
                 const { data } = await api.post("/auth/dev-login", { email, password });
-                return data as {
-                    user: Parameters<typeof setAuth>[0];
-                    accessToken: string;
-                };
+                return data as { user: Parameters<typeof setAuth>[0] };
             }
             const credential = await signInWithEmailAndPassword(
                 firebaseAuth,
@@ -66,13 +66,10 @@ export function useAuth() {
             );
             const firebaseToken = await credential.user.getIdToken();
             const { data } = await api.post("/auth/login", { firebaseToken });
-            return data as {
-                user: Parameters<typeof setAuth>[0];
-                accessToken: string;
-            };
+            return data as { user: Parameters<typeof setAuth>[0] };
         },
-        onSuccess: ({ user, accessToken }) => {
-            setAuth(user, accessToken);
+        onSuccess: ({ user }) => {
+            setAuth(user);
             router.push("/");
         },
     });
@@ -89,19 +86,22 @@ export function useAuth() {
             const result = await signInWithPopup(firebaseAuth, googleProvider);
             const firebaseToken = await result.user.getIdToken();
             const { data } = await api.post("/auth/login", { firebaseToken });
-            return data as {
-                user: Parameters<typeof setAuth>[0];
-                accessToken: string;
-            };
+            return data as { user: Parameters<typeof setAuth>[0] };
         },
-        onSuccess: ({ user, accessToken }) => {
-            setAuth(user, accessToken);
+        onSuccess: ({ user }) => {
+            setAuth(user);
             router.push("/");
         },
     });
 
     // ── Logout ───────────────────────────────────────────────────────────────
     const logout = useCallback(async () => {
+        // Hit the API first so it can clear cookies + revoke the jti.
+        try {
+            await api.post("/auth/logout");
+        } catch {
+            // ignore — we still want to clear local state.
+        }
         if (!USE_DEV_LOGIN) {
             try {
                 await firebaseSignOut(firebaseAuth);
@@ -116,7 +116,6 @@ export function useAuth() {
 
     return {
         user: meQuery.data ?? user,
-        token,
         isAuthenticated,
         isLoading: isLoading || meQuery.isLoading,
         loginWithEmail,
