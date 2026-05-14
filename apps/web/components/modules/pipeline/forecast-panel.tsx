@@ -1,6 +1,15 @@
 "use client";
 
-import { Target, TrendingUp, AlertCircle, ChevronRight } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+    Target,
+    TrendingUp,
+    AlertCircle,
+    ChevronRight,
+    ChevronDown,
+    ChevronUp,
+    X,
+} from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -9,35 +18,208 @@ import { usePipelineForecast, type DealForecast } from "@/hooks/useForecast";
 /**
  * Forecast widget shown at the top of the pipeline view.
  *
- * Three things land here that competitors don't show:
- *   1. The expected revenue for the period is sourced from per-deal
- *      probabilities, not a flat percentage by stage. A deal that's
- *      been ghosted for 3 weeks doesn't count the same as one with
- *      daily activity.
- *   2. The confidence flag is data-driven (sample size in the last
- *      90 days), so a brand-new pipeline doesn't pretend to know.
- *   3. Per-deal "why" lives in the deal drawer — every percentage
- *      point can be traced to a named factor.
+ * Three view modes, persisted in localStorage per pipelineId so each
+ * pipeline can default to whatever the operator prefers:
+ *
+ *   - `hidden`   → 0px footprint, replaced by a tiny "Mostrar previsão"
+ *                  button that doesn't fight the kanban for space.
+ *   - `compact`  → single thin strip (~48px) with the three KPIs inline.
+ *                  Default, scannable in one glance.
+ *   - `expanded` → full layout with KPI cards + top deals list. The
+ *                  per-deal "why" lives in the deal drawer
+ *                  (DealForecastCard), so this view is for "what's the
+ *                  shape of the pipeline overall" not "tell me about
+ *                  each deal."
  */
+type ForecastViewMode = "hidden" | "compact" | "expanded";
+
+const STORAGE_KEY = (pipelineId: string) => `crm:pipeline:forecast-mode:${pipelineId}`;
+const DEFAULT_MODE: ForecastViewMode = "compact";
+
+function readMode(pipelineId: string | null | undefined): ForecastViewMode {
+    if (!pipelineId || typeof window === "undefined") return DEFAULT_MODE;
+    const raw = window.localStorage.getItem(STORAGE_KEY(pipelineId));
+    if (raw === "hidden" || raw === "compact" || raw === "expanded") return raw;
+    return DEFAULT_MODE;
+}
+
+function writeMode(pipelineId: string, mode: ForecastViewMode) {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(STORAGE_KEY(pipelineId), mode);
+}
+
 export function PipelineForecastPanel({ pipelineId }: { pipelineId: string | null | undefined }) {
+    const [mode, setMode] = useState<ForecastViewMode>(DEFAULT_MODE);
+
+    // Hydrate from localStorage once we know the pipelineId (and we're in
+    // the browser). Pipeline changes also re-read the preference.
+    useEffect(() => {
+        if (!pipelineId) return;
+        setMode(readMode(pipelineId));
+    }, [pipelineId]);
+
+    const updateMode = (next: ForecastViewMode) => {
+        setMode(next);
+        if (pipelineId) writeMode(pipelineId, next);
+    };
+
     const { data, isLoading, isError } = usePipelineForecast(pipelineId);
 
     if (!pipelineId) return null;
-    if (isLoading) {
+    if (isError) return null;
+
+    if (mode === "hidden") {
+        // Minimal-footprint affordance to bring the panel back. Sits as a
+        // tiny chip; no wrapping div with padding so the kanban gets
+        // almost the full vertical space.
         return (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                <Skeleton className="h-24" />
-                <Skeleton className="h-24" />
-                <Skeleton className="h-24" />
+            <div className="shrink-0 border-b border-[var(--rim)] px-6 py-1.5">
+                <button
+                    type="button"
+                    onClick={() => updateMode("compact")}
+                    aria-label="Mostrar previsão do pipeline"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-[var(--rim)] bg-surface-2 px-2.5 py-1 text-xs text-t2 transition-colors hover:border-[var(--rim2)] hover:bg-surface-3 hover:text-t1"
+                >
+                    <TrendingUp className="h-3 w-3" aria-hidden="true" />
+                    Mostrar previsão
+                </button>
             </div>
         );
     }
-    if (isError || !data) return null;
+
+    if (isLoading) {
+        return (
+            <div className="shrink-0 border-b border-[var(--rim)] px-6 py-3">
+                {mode === "compact" ? (
+                    <Skeleton className="h-10" />
+                ) : (
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                        <Skeleton className="h-24" />
+                        <Skeleton className="h-24" />
+                        <Skeleton className="h-24" />
+                    </div>
+                )}
+            </div>
+        );
+    }
+    if (!data) return null;
 
     const periodLabel = formatPeriodEnd(data.periodEnd);
 
+    if (mode === "compact") {
+        return (
+            <div className="shrink-0 border-b border-[var(--rim)] px-6 py-2">
+                <CompactBar
+                    data={data}
+                    periodLabel={periodLabel}
+                    onExpand={() => updateMode("expanded")}
+                    onHide={() => updateMode("hidden")}
+                />
+            </div>
+        );
+    }
+
     return (
-        <div className="space-y-3">
+        <div className="shrink-0 border-b border-[var(--rim)] px-6 py-3">
+            <ExpandedPanel
+                data={data}
+                periodLabel={periodLabel}
+                onCollapse={() => updateMode("compact")}
+                onHide={() => updateMode("hidden")}
+            />
+        </div>
+    );
+}
+
+// ── Compact bar ────────────────────────────────────────────────────────────
+
+function CompactBar({
+    data,
+    periodLabel,
+    onExpand,
+    onHide,
+}: {
+    data: NonNullable<ReturnType<typeof usePipelineForecast>["data"]>;
+    periodLabel: string;
+    onExpand: () => void;
+    onHide: () => void;
+}) {
+    return (
+        <div className="flex items-center gap-3 rounded-lg border border-[var(--rim)] bg-surface-2 px-3 py-2 text-sm">
+            <span className="inline-flex items-center gap-1.5 text-t2">
+                <TrendingUp className="h-3.5 w-3.5 text-jade" aria-hidden="true" />
+                <strong className="text-t1">{formatCurrency(data.totals.expectedRevenueUsd)}</strong>
+                <span className="text-t3">esperados · até {periodLabel}</span>
+            </span>
+            <span className="text-t4" aria-hidden="true">·</span>
+            <span className="inline-flex items-center gap-1.5 text-t2">
+                <Target className="h-3.5 w-3.5 text-violet" aria-hidden="true" />
+                <strong className="text-t1">{data.totals.openDeals}</strong>
+                <span className="text-t3">deals em jogo</span>
+            </span>
+            <span className="text-t4" aria-hidden="true">·</span>
+            <ConfidenceChip confidence={data.confidence} sample={data.closedSampleSize} />
+
+            <div className="ml-auto flex items-center gap-1">
+                <button
+                    type="button"
+                    onClick={onExpand}
+                    aria-expanded={false}
+                    aria-controls="forecast-expanded-panel"
+                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-t3 transition-colors hover:bg-surface-3 hover:text-t1"
+                >
+                    Ver detalhes
+                    <ChevronDown className="h-3 w-3" aria-hidden="true" />
+                </button>
+                <button
+                    type="button"
+                    onClick={onHide}
+                    aria-label="Ocultar previsão"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-md text-t3 transition-colors hover:bg-surface-3 hover:text-t1"
+                >
+                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+            </div>
+        </div>
+    );
+}
+
+// ── Expanded panel ─────────────────────────────────────────────────────────
+
+function ExpandedPanel({
+    data,
+    periodLabel,
+    onCollapse,
+    onHide,
+}: {
+    data: NonNullable<ReturnType<typeof usePipelineForecast>["data"]>;
+    periodLabel: string;
+    onCollapse: () => void;
+    onHide: () => void;
+}) {
+    return (
+        <div id="forecast-expanded-panel" className="space-y-3">
+            <div className="flex items-center justify-end gap-1">
+                <button
+                    type="button"
+                    onClick={onCollapse}
+                    aria-expanded={true}
+                    aria-controls="forecast-expanded-panel"
+                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-t3 transition-colors hover:bg-surface-2 hover:text-t1"
+                >
+                    Minimizar
+                    <ChevronUp className="h-3 w-3" aria-hidden="true" />
+                </button>
+                <button
+                    type="button"
+                    onClick={onHide}
+                    aria-label="Ocultar previsão"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-md text-t3 transition-colors hover:bg-surface-2 hover:text-t1"
+                >
+                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+            </div>
+
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                 <Stat
                     icon={<TrendingUp className="h-4 w-4" aria-hidden="true" />}
@@ -75,6 +257,31 @@ export function PipelineForecastPanel({ pipelineId }: { pipelineId: string | nul
                 </Card>
             )}
         </div>
+    );
+}
+
+// ── Pieces ────────────────────────────────────────────────────────────────
+
+function ConfidenceChip({
+    confidence,
+    sample,
+}: {
+    confidence: "low" | "medium" | "high";
+    sample: number;
+}) {
+    const cfg = {
+        high: { label: "Alta", className: "bg-jade-dim text-jade border-jade/30" },
+        medium: { label: "Média", className: "bg-amber-dim text-amber border-amber/30" },
+        low: { label: "Baixa", className: "bg-rose-dim text-rose border-rose/30" },
+    }[confidence];
+    return (
+        <span
+            className={cn("inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs", cfg.className)}
+            title={`${sample} deals fechados nos últimos 90d`}
+        >
+            <AlertCircle className="h-3 w-3" aria-hidden="true" />
+            Confiança {cfg.label.toLowerCase()}
+        </span>
     );
 }
 
