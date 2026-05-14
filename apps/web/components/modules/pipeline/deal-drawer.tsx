@@ -37,6 +37,7 @@ import {
     useUpdateDeal,
 } from "@/hooks/usePipeline";
 import type { PipelineDeal, DealMovement, AgentSession } from "@/hooks/usePipeline";
+import { DealForecastCard } from "@/components/modules/pipeline/deal-forecast-card";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -285,6 +286,11 @@ export function DealDrawer({ deal, open, onOpenChange, onOpenInbox }: DealDrawer
                             <div className="min-h-0 flex-1 overflow-y-auto">
                                 {/* ── OVERVIEW ─────────────────────────────── */}
                                 <TabsContent value="overview" className="mt-0 p-6 space-y-5">
+                                    {/* Explainable forecast — server-computed
+                                        per-deal probability with the named
+                                        factors driving it. */}
+                                    {dealId && <DealForecastCard dealId={dealId} />}
+
                                     {/* Probability row */}
                                     <div className="grid grid-cols-2 gap-3">
                                         {[

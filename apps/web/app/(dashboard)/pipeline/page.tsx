@@ -27,6 +27,7 @@ import { ListView } from "@/components/modules/pipeline/list-view";
 import { FunnelView } from "@/components/modules/pipeline/funnel-view";
 import { DealDrawer } from "@/components/modules/pipeline/deal-drawer";
 import { StageConfigModal } from "@/components/modules/pipeline/stage-config-modal";
+import { PipelineForecastPanel } from "@/components/modules/pipeline/forecast-panel";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -349,6 +350,11 @@ export default function PipelinePage() {
                         Novo Deal
                     </Button>
                 </div>
+            </div>
+
+            {/* ── Forecast widget ─────────────────────────────────────────────── */}
+            <div className="shrink-0 border-b border-[var(--rim)] px-6 py-3">
+                <PipelineForecastPanel pipelineId={activePipelineId} />
             </div>
 
             {/* ── Filter bar ──────────────────────────────────────────────────── */}
