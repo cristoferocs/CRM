@@ -28,6 +28,19 @@ const MAX_TOOL_ITERATIONS = 8;
  */
 const MAX_TOKENS_PER_SESSION = Number(process.env.AI_MAX_TOKENS_PER_SESSION ?? 50_000);
 
+// Imported here (not at top) to keep the diff minimal.
+import { computeCost } from "../../../lib/ai-pricing.js";
+import { AgentCostService } from "./agent-cost.service.js";
+
+const agentCostService = new AgentCostService();
+const MONTHLY_BUDGET_USD = Number(process.env.AI_MONTHLY_BUDGET_USD ?? 0);
+
+async function checkOrgBudget(orgId: string): Promise<{ overBudget: boolean; mtdUsd: number }> {
+    if (MONTHLY_BUDGET_USD <= 0) return { overBudget: false, mtdUsd: 0 };
+    const mtdUsd = await agentCostService.monthToDateCost(orgId);
+    return { overBudget: mtdUsd >= MONTHLY_BUDGET_USD, mtdUsd };
+}
+
 async function getSessionTokensUsed(sessionId: string): Promise<number> {
     const agg = await prisma.aIAgentTurn.aggregate({
         where: { sessionId },
@@ -315,6 +328,29 @@ export async function runSuperAgent(input: AgentRunInput): Promise<AgentRunResul
     let finalResponse = "";
     let totalTokens = 0;
     let updatedCollectedData = { ...collectedData };
+    let lastTurnCost: ReturnType<typeof computeCost> | null = null;
+    let lastLlmDurationMs: number | undefined;
+
+    const budget = await checkOrgBudget(oid);
+    if (budget.overBudget) {
+        await agentRepo.endSession(session.id, {
+            reason: `Org excedeu o orçamento mensal de IA ($${MONTHLY_BUDGET_USD.toFixed(2)}). MTD: $${budget.mtdUsd.toFixed(2)}.`,
+            outcome: "ORG_BUDGET_EXCEEDED",
+        });
+        return {
+            sessionId: session.id,
+            response:
+                "O atendimento automático foi pausado porque sua conta atingiu o limite mensal de IA. Um atendente humano vai continuar.",
+            reply:
+                "O atendimento automático foi pausado porque sua conta atingiu o limite mensal de IA. Um atendente humano vai continuar.",
+            handoff: true,
+            handoffReason: "ORG_BUDGET_EXCEEDED",
+            tokensUsed: 0,
+            goalAchieved: false,
+            collectedData,
+            missingDataPoints: getMissingDataPoints(requiredDataPoints, collectedData),
+        };
+    }
 
     const sessionTokensBefore = await getSessionTokensUsed(session.id);
     if (sessionTokensBefore >= MAX_TOKENS_PER_SESSION) {
@@ -338,13 +374,24 @@ export async function runSuperAgent(input: AgentRunInput): Promise<AgentRunResul
     }
 
     for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
+        const llmStart = Date.now();
         const aiResponse = await provider.chat(messages, {
             temperature: agent.temperature,
             maxTokens: agent.maxTokens,
             systemPrompt,
         });
+        const llmDurationMs = Date.now() - llmStart;
         totalTokens += aiResponse.tokensUsed;
         const responseText = aiResponse.content;
+        const cost = computeCost({
+            provider: providerName,
+            model: aiResponse.model,
+            inputTokens: aiResponse.inputTokens,
+            outputTokens: aiResponse.outputTokens,
+            tokensUsed: aiResponse.tokensUsed,
+        });
+        lastTurnCost = cost;
+        lastLlmDurationMs = llmDurationMs;
 
         // Check session budget mid-loop. If exceeded after this turn's tokens,
         // emit what we have and stop early — do not enqueue another LLM call.
@@ -356,6 +403,11 @@ export async function runSuperAgent(input: AgentRunInput): Promise<AgentRunResul
                 role: "assistant",
                 content: finalResponse,
                 tokensUsed: aiResponse.tokensUsed,
+                inputTokens: cost.inputTokens,
+                outputTokens: cost.outputTokens,
+                model: cost.modelKey,
+                costUsd: cost.costUsd,
+                durationMs: llmDurationMs,
             });
             await agentRepo.endSession(session.id, {
                 reason: "TOKEN_BUDGET_EXCEEDED",
@@ -405,7 +457,10 @@ export async function runSuperAgent(input: AgentRunInput): Promise<AgentRunResul
             }
         }
 
-        // Persist tool turn
+        // Persist tool turn. We attribute the LLM cost of this iteration's
+        // assistant response to the tool turn so the per-turn cost
+        // breakdown lines up with what the model "spent" to decide to
+        // call this tool.
         await agentRepo.createTurn({
             sessionId: session.id,
             role: "tool",
@@ -414,6 +469,11 @@ export async function runSuperAgent(input: AgentRunInput): Promise<AgentRunResul
             toolParams: toolCall.params,
             toolResult,
             tokensUsed: aiResponse.tokensUsed,
+            inputTokens: cost.inputTokens,
+            outputTokens: cost.outputTokens,
+            model: cost.modelKey,
+            costUsd: cost.costUsd,
+            durationMs: llmDurationMs,
         });
 
         messages = [
@@ -462,12 +522,20 @@ export async function runSuperAgent(input: AgentRunInput): Promise<AgentRunResul
     });
     await prisma.conversation.update({ where: { id: convId }, data: { lastMessageAt: new Date() } });
 
-    // Persist assistant turn
+    // Persist the final assistant turn. The cost of intermediate LLM calls
+    // was already attributed to each tool turn; we only carry the *last*
+    // call's cost here (the one that produced finalResponse) to avoid
+    // double-counting in cost rollups.
     await agentRepo.createTurn({
         sessionId: session.id,
         role: "assistant",
         content: finalResponse,
         tokensUsed: totalTokens,
+        inputTokens: lastTurnCost?.inputTokens ?? 0,
+        outputTokens: lastTurnCost?.outputTokens ?? 0,
+        model: lastTurnCost?.modelKey,
+        costUsd: lastTurnCost?.costUsd ?? 0,
+        durationMs: lastLlmDurationMs,
     });
 
     // -----------------------------------------------------------------------

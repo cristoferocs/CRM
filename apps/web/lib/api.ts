@@ -1,49 +1,76 @@
 import axios from "axios";
-import type { InternalAxiosRequestConfig, AxiosError } from "axios";
+import type { AxiosError, AxiosRequestConfig } from "axios";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3333";
 
+/**
+ * Browser auth model: the API sets an HttpOnly cookie at login that is sent
+ * automatically with every cross-site request thanks to `withCredentials`.
+ * We no longer read or attach a JWT from localStorage — eliminates the XSS
+ * attack surface.
+ *
+ * If the API is on a different origin than the front-end, the API's CORS
+ * config must echo `Access-Control-Allow-Credentials: true` and the cookie
+ * must be `SameSite=None; Secure` in production (we use `SameSite=Strict`
+ * by default for tighter CSRF — works when API and web share a parent
+ * domain in production).
+ */
 export const api = axios.create({
     baseURL: API_BASE,
     headers: {
         "Content-Type": "application/json",
     },
     timeout: 30_000,
+    withCredentials: true,
 });
 
-// ── Request interceptor: attach JWT ────────────────────────────────────────
-api.interceptors.request.use(
-    (config: InternalAxiosRequestConfig) => {
-        // Token stored by auth store — read directly to avoid circular dep
-        const token =
-            typeof window !== "undefined"
-                ? localStorage.getItem("crm:access_token")
-                : null;
-        if (token && config.headers) {
-            config.headers.Authorization = `Bearer ${token}`;
-        }
-        return config;
-    },
-    (error) => Promise.reject(error),
-);
+let isRefreshing = false;
+let pendingRefresh: Promise<void> | null = null;
 
-// ── Response interceptor: handle 401 ──────────────────────────────────────
+async function refreshSession(): Promise<void> {
+    if (pendingRefresh) return pendingRefresh;
+    isRefreshing = true;
+    pendingRefresh = axios
+        .post(`${API_BASE}/auth/refresh`, {}, { withCredentials: true })
+        .then(() => undefined)
+        .finally(() => {
+            isRefreshing = false;
+            pendingRefresh = null;
+        });
+    return pendingRefresh;
+}
+
+// ── Response interceptor: 401 → try refresh once, then bounce to /login ───
 api.interceptors.response.use(
     (response) => response,
     async (error: AxiosError) => {
-        if (error.response?.status === 401) {
-            if (typeof window !== "undefined") {
-                // Wipe both the raw token and the persisted Zustand auth store
-                // (otherwise the login page redirects right back to "/" and loops).
-                localStorage.removeItem("crm:access_token");
-                localStorage.removeItem("crm:auth");
-                document.cookie = "crm:access_token=; Max-Age=0; path=/";
+        const status = error.response?.status;
+        const originalRequest = error.config as
+            | (AxiosRequestConfig & { _retried?: boolean; url?: string })
+            | undefined;
 
-                // Avoid bouncing to /login if we are already there — that would
-                // cause the page to reload in a loop while the user is typing.
-                if (!window.location.pathname.startsWith("/login")) {
-                    window.location.href = "/login";
-                }
+        // Don't try to refresh /auth/* endpoints — that would loop.
+        const isAuthEndpoint = originalRequest?.url?.includes("/auth/");
+        if (status === 401 && originalRequest && !originalRequest._retried && !isAuthEndpoint) {
+            originalRequest._retried = true;
+            try {
+                await refreshSession();
+                return api.request(originalRequest);
+            } catch {
+                // Fall through to logout below.
+            }
+        }
+
+        if (status === 401 && typeof window !== "undefined" && !isRefreshing) {
+            try {
+                window.localStorage.removeItem("crm:auth");
+                window.localStorage.removeItem("crm:access_token");
+                document.cookie = "crm:access_token=; Max-Age=0; path=/";
+            } catch {
+                // ignore
+            }
+            if (!window.location.pathname.startsWith("/login")) {
+                window.location.href = "/login";
             }
         }
         return Promise.reject(error);

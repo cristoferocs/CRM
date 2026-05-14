@@ -1,6 +1,8 @@
+import { createHash } from "node:crypto";
 import { Storage } from "@google-cloud/storage";
 import { getEmbeddingProvider } from "../ai.factory.js";
 import { KnowledgeRepository } from "./knowledge.repository.js";
+import { getOrSet, invalidatePrefix } from "../../../lib/cache.js";
 import { pgvectorSearch } from "./vector-search/pgvector.search.js";
 import { vertexSearch } from "./vector-search/vertex.search.js";
 import { extractPdf } from "./indexers/pdf.indexer.js";
@@ -177,6 +179,9 @@ export class KnowledgeService {
                 status: "INDEXED",
                 chunkCount: chunks.length,
             });
+            // Drop any cached search results for this org — they were
+            // computed against the old document set.
+            await this.invalidateSearchCache(orgId);
         } catch (err) {
             await this.repo.updateDocument(documentId, { status: "FAILED" });
             throw err;
@@ -188,23 +193,46 @@ export class KnowledgeService {
     // -------------------------------------------------------------------------
 
     async search(input: SearchKnowledgeInput, orgId: string): Promise<SearchResult[]> {
-        const documentIds = await this.repo.getDocumentIds(input.knowledgeBaseIds, orgId);
-        if (documentIds.length === 0) return [];
+        // Cache search results by (orgId, KB-set, query, limit). Heavy agents
+        // ask the same questions across many sessions — embedding + vector
+        // search costs $$ and takes 100-500ms. TTL is short (90s) so KB
+        // updates surface quickly; invalidate() below blows away whole KBs
+        // when documents change.
+        const cacheKey = this.buildSearchKey(orgId, input);
+        return getOrSet<SearchResult[]>(cacheKey, 90, async () => {
+            const documentIds = await this.repo.getDocumentIds(input.knowledgeBaseIds, orgId);
+            if (documentIds.length === 0) return [];
 
-        const provider = getEmbeddingProvider();
-        const queryVector = await provider.embed(input.query);
+            const provider = getEmbeddingProvider();
+            const queryVector = await provider.embed(input.query);
 
-        if (VECTOR_PROVIDER === "vertex") {
-            return vertexSearch(
-                queryVector,
-                orgId,
-                documentIds,
-                input.limit,
-                (ids) => this.repo.vectorSearch(queryVector, orgId, ids, input.limit),
-            );
-        }
+            if (VECTOR_PROVIDER === "vertex") {
+                return vertexSearch(
+                    queryVector,
+                    orgId,
+                    documentIds,
+                    input.limit,
+                    (ids) => this.repo.vectorSearch(queryVector, orgId, ids, input.limit),
+                );
+            }
 
-        return pgvectorSearch(queryVector, orgId, documentIds, input.limit);
+            return pgvectorSearch(queryVector, orgId, documentIds, input.limit);
+        });
+    }
+
+    private buildSearchKey(orgId: string, input: SearchKnowledgeInput): string {
+        const kbs = [...input.knowledgeBaseIds].sort().join(",");
+        const hash = createHash("sha1")
+            .update(`${kbs}|${input.query}|${input.limit ?? ""}`)
+            .digest("hex")
+            .slice(0, 16);
+        return `kb:search:${orgId}:${hash}`;
+    }
+
+    /** Drop every cached KB search result for this org. Call this after a
+     *  document is indexed / removed so stale answers don't linger. */
+    invalidateSearchCache(orgId: string): Promise<void> {
+        return invalidatePrefix(`kb:search:${orgId}:`);
     }
 
     // -------------------------------------------------------------------------

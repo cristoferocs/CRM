@@ -158,6 +158,11 @@ export class AgentRepository {
         toolParams?: Record<string, unknown>;
         toolResult?: string;
         tokensUsed?: number;
+        inputTokens?: number;
+        outputTokens?: number;
+        model?: string;
+        costUsd?: number;
+        durationMs?: number;
     }) {
         return prisma.aIAgentTurn.create({ data: data as never });
     }

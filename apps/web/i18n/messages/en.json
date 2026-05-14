@@ -1,0 +1,55 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "loading": "Loading…",
+    "search": "Search…",
+    "filter": "Filter",
+    "actions": "Actions",
+    "close": "Close",
+    "back": "Back",
+    "next": "Next",
+    "yes": "Yes",
+    "no": "No",
+    "required": "Required",
+    "optional": "Optional",
+    "noResults": "No results",
+    "tryAgain": "Try again",
+    "today": "Today",
+    "yesterday": "Yesterday"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "pipeline": "Pipeline",
+    "contacts": "Contacts",
+    "inbox": "Inbox",
+    "automations": "Automations",
+    "agents": "Agents",
+    "knowledge": "Knowledge",
+    "reports": "Reports",
+    "insights": "Insights",
+    "documents": "Documents",
+    "payments": "Payments",
+    "gamification": "Gamification",
+    "settings": "Settings"
+  },
+  "auth": {
+    "login": "Sign in",
+    "logout": "Sign out",
+    "email": "Email",
+    "password": "Password",
+    "loginWithGoogle": "Sign in with Google",
+    "skipToContent": "Skip to main content"
+  },
+  "errors": {
+    "generic": "Something went wrong. Please try again.",
+    "network": "Connection failed. Check your internet and try again.",
+    "unauthorized": "Your session expired. Please sign in again.",
+    "forbidden": "You don't have permission for this action.",
+    "notFound": "Not found.",
+    "conflict": "Record was modified by someone else. Reload and try again."
+  }
+}

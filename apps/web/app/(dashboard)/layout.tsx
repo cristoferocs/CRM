@@ -203,6 +203,8 @@ function NavItem({
         <Link
             href={href}
             title={collapsed ? label : undefined}
+            aria-label={collapsed ? label : undefined}
+            aria-current={active ? "page" : undefined}
             className={cn(
                 "group relative flex items-center gap-2.5 rounded-[10px] border border-transparent px-2.5 py-[9px] text-sm transition-all duration-150",
                 collapsed ? "justify-center" : "",
@@ -213,10 +215,14 @@ function NavItem({
         >
             {/* Active indicator */}
             {active && (
-                <span className="absolute -left-px top-[20%] h-[60%] w-0.5 rounded-r-sm bg-violet shadow-[0_0_8px_#7c5cfc]" />
+                <span
+                    aria-hidden="true"
+                    className="absolute -left-px top-[20%] h-[60%] w-0.5 rounded-r-sm bg-violet shadow-[0_0_8px_#7c5cfc]"
+                />
             )}
 
             <Icon
+                aria-hidden="true"
                 className={cn(
                     "h-4 w-4 shrink-0 transition-colors",
                     active ? "text-violet" : "text-t3 group-hover:text-t2",
@@ -237,6 +243,8 @@ function UserCard({ collapsed }: { collapsed: boolean }) {
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                     <button
+                        type="button"
+                        aria-label={`Menu do usuário${user?.name ? `, ${user.name}` : ""}`}
                         className={cn(
                             "flex w-full cursor-pointer items-center gap-2.5 rounded-[10px] border border-[var(--rim)] bg-surface-2 p-2.5 transition-colors hover:border-[var(--rim2)]",
                             collapsed && "justify-center",
@@ -319,13 +327,16 @@ function Topbar({
         <header className="flex h-14 shrink-0 items-center gap-4 border-b border-[var(--rim)] bg-void/80 px-7 backdrop-blur-md">
             {/* Collapse toggle */}
             <button
+                type="button"
                 onClick={onToggle}
+                aria-label={collapsed ? "Expandir menu lateral" : "Recolher menu lateral"}
+                aria-expanded={!collapsed}
                 className="flex h-[34px] w-[34px] items-center justify-center rounded-[10px] border border-[var(--rim)] bg-surface-2 text-t3 transition-all hover:border-[var(--rim2)] hover:bg-surface-3 hover:text-t1"
             >
                 {collapsed ? (
-                    <ChevronRight className="h-4 w-4" />
+                    <ChevronRight className="h-4 w-4" aria-hidden="true" />
                 ) : (
-                    <ChevronLeft className="h-4 w-4" />
+                    <ChevronLeft className="h-4 w-4" aria-hidden="true" />
                 )}
             </button>
 
@@ -358,13 +369,28 @@ function Topbar({
 
             {/* Actions */}
             <div className="flex items-center gap-2">
-                <button className="flex h-[34px] w-[34px] items-center justify-center rounded-[10px] border border-[var(--rim)] bg-surface-2 text-t2 transition-all hover:border-[var(--rim2)] hover:bg-surface-3 hover:text-t1">
-                    <Plus className="h-4 w-4" />
+                <button
+                    type="button"
+                    aria-label="Criar novo"
+                    className="flex h-[34px] w-[34px] items-center justify-center rounded-[10px] border border-[var(--rim)] bg-surface-2 text-t2 transition-all hover:border-[var(--rim2)] hover:bg-surface-3 hover:text-t1"
+                >
+                    <Plus className="h-4 w-4" aria-hidden="true" />
                 </button>
-                <button className="relative flex h-[34px] w-[34px] items-center justify-center rounded-[10px] border border-[var(--rim)] bg-surface-2 text-t2 transition-all hover:border-[var(--rim2)] hover:bg-surface-3 hover:text-t1">
-                    <Bell className="h-4 w-4" />
+                <button
+                    type="button"
+                    aria-label={
+                        unreadCount > 0
+                            ? `Notificações, ${unreadCount} não lidas`
+                            : "Notificações"
+                    }
+                    className="relative flex h-[34px] w-[34px] items-center justify-center rounded-[10px] border border-[var(--rim)] bg-surface-2 text-t2 transition-all hover:border-[var(--rim2)] hover:bg-surface-3 hover:text-t1"
+                >
+                    <Bell className="h-4 w-4" aria-hidden="true" />
                     {unreadCount > 0 && (
-                        <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-rose shadow-[0_0_6px_#ff4d6d] border border-void" />
+                        <span
+                            aria-hidden="true"
+                            className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-rose shadow-[0_0_6px_#ff4d6d] border border-void"
+                        />
                     )}
                 </button>
             </div>
@@ -391,7 +417,13 @@ export default function DashboardLayout({
                     collapsed={!sidebarOpen}
                     onToggle={toggleSidebar}
                 />
-                <main className="flex-1 overflow-y-auto bg-void p-7">{children}</main>
+                <main
+                    id="main-content"
+                    tabIndex={-1}
+                    className="flex-1 overflow-y-auto bg-void p-7 focus:outline-none"
+                >
+                    {children}
+                </main>
             </div>
         </div>
     );

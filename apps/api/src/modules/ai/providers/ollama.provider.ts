@@ -61,11 +61,15 @@ export class OllamaProvider implements IAIProvider {
             },
         });
 
-        const tokensUsed = (result.eval_count ?? 0) + (result.prompt_eval_count ?? 0);
+        const inputTokens = result.prompt_eval_count ?? 0;
+        const outputTokens = result.eval_count ?? 0;
+        const tokensUsed = inputTokens + outputTokens;
 
         return {
             content: result.message.content,
             tokensUsed,
+            inputTokens,
+            outputTokens,
             model: result.model,
         };
     }

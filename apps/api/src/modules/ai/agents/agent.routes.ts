@@ -1,6 +1,8 @@
 import { z } from "zod";
 import type { FastifyPluginAsync } from "fastify";
 import { AgentService } from "./agent.service.js";
+import { AgentCostService } from "./agent-cost.service.js";
+import { HandoffTimelineService } from "./handoff-timeline.service.js";
 import {
     CreateAgentSchema,
     UpdateAgentSchema,
@@ -20,8 +22,24 @@ const VersionParams = z.object({ id: z.string(), versionId: z.string() });
 const TurnParams = z.object({ id: z.string(), turnId: z.string() });
 const AgentSessionParams = z.object({ id: z.string(), sessionId: z.string() });
 
+const CostSummaryQuery = z.object({
+    from: z.string().datetime().optional(),
+    to: z.string().datetime().optional(),
+});
+
+const TimelineQuery = z
+    .object({
+        dealId: z.string().optional(),
+        conversationId: z.string().optional(),
+    })
+    .refine((q) => !!q.dealId || !!q.conversationId, {
+        message: "dealId or conversationId required",
+    });
+
 export const agentRoutes: FastifyPluginAsync = async (fastify) => {
     const service = new AgentService();
+    const costService = new AgentCostService();
+    const timelineService = new HandoffTimelineService();
 
     // -----------------------------------------------------------------------
     // CRUD
@@ -356,6 +374,70 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
         async (request) => {
             const { turnId } = request.params as { id: string; turnId: string };
             return service.getTurnDetail(turnId, request.user.orgId!);
+        },
+    );
+
+    // -----------------------------------------------------------------------
+    // Cost tracking
+    // -----------------------------------------------------------------------
+
+    // GET /agents/cost/summary?from=ISO&to=ISO
+    fastify.get(
+        "/cost/summary",
+        {
+            onRequest: [fastify.verifyJWT],
+            schema: { querystring: CostSummaryQuery },
+        },
+        async (request) => {
+            const q = request.query as z.infer<typeof CostSummaryQuery>;
+            return costService.summary(request.user.orgId!, {
+                from: q.from ? new Date(q.from) : undefined,
+                to: q.to ? new Date(q.to) : undefined,
+            });
+        },
+    );
+
+    // GET /agents/timeline?dealId= or ?conversationId=
+    // Chronological flow of every agent (and final human) that handled
+    // a single deal / conversation. Drives the multi-agent handoff
+    // visualization in the UI.
+    fastify.get(
+        "/timeline",
+        {
+            onRequest: [fastify.verifyJWT],
+            schema: { querystring: TimelineQuery },
+        },
+        async (request, reply) => {
+            const q = request.query as z.infer<typeof TimelineQuery>;
+            const orgId = request.user.orgId!;
+            const timeline = q.dealId
+                ? await timelineService.forDeal(q.dealId, orgId)
+                : await timelineService.forConversation(q.conversationId!, orgId);
+            if (!timeline) {
+                return reply.code(404).send({ message: "Not found" });
+            }
+            return timeline;
+        },
+    );
+
+    // GET /agents/cost/budget — current month-to-date spend + configured cap
+    fastify.get(
+        "/cost/budget",
+        { onRequest: [fastify.verifyJWT] },
+        async (request) => {
+            const mtd = await costService.monthToDateCost(request.user.orgId!);
+            const monthlyBudgetUsd = Number(process.env.AI_MONTHLY_BUDGET_USD ?? 0);
+            const alertThreshold = Number(process.env.AI_BUDGET_ALERT_RATIO ?? 0.8);
+            return {
+                monthToDateUsd: mtd,
+                monthlyBudgetUsd: monthlyBudgetUsd > 0 ? monthlyBudgetUsd : null,
+                percentUsed:
+                    monthlyBudgetUsd > 0 ? Math.min(1, mtd / monthlyBudgetUsd) : null,
+                alertThreshold,
+                isOverBudget: monthlyBudgetUsd > 0 && mtd >= monthlyBudgetUsd,
+                isApproachingBudget:
+                    monthlyBudgetUsd > 0 && mtd >= monthlyBudgetUsd * alertThreshold,
+            };
         },
     );
 };

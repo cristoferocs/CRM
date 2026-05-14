@@ -10,6 +10,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useConversation, useSendMessage } from "@/hooks/useInbox";
+import { HandoffTimeline } from "@/components/modules/agents/handoff-timeline";
 import { formatRelative, cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { useSocket } from "@/hooks/useSocket";
@@ -308,6 +309,11 @@ export default function ConversationPage() {
 
                 {/* Messages */}
                 <div className="flex-1 overflow-y-auto p-5 space-y-3">
+                    {/* Cross-session handoff visualization — shows which AI
+                        agents (and the final human) have handled this
+                        conversation, in order. */}
+                    {id && <HandoffTimeline conversationId={id} />}
+
                     {isLoading
                         ? Array.from({ length: 4 }).map((_, i) => (
                             <div key={i} className={cn("flex", i % 2 === 0 ? "justify-start" : "justify-end")}>

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { FastifyPluginAsync } from "fastify";
 import { PipelineService } from "./module.service.js";
+import { ForecastService } from "./forecast.service.js";
 import {
     CreatePipelineSchema,
     UpdatePipelineSchema,
@@ -40,9 +41,14 @@ import { requireRole } from "../../lib/permissions.js";
 const IdParams = z.object({ id: z.string() });
 const StageParams = z.object({ id: z.string(), stageId: z.string() });
 const DuplicateBody = z.object({ name: z.string().min(1).max(100) });
+const ForecastQuery = z.object({
+    pipelineId: z.string(),
+    periodEnd: z.string().datetime().optional(),
+});
 
 export const pipelineRoutes: FastifyPluginAsync = async (fastify) => {
     const service = new PipelineService();
+    const forecastService = new ForecastService();
 
     // =========================================================================
     // PIPELINES
@@ -458,6 +464,41 @@ export const pipelineRoutes: FastifyPluginAsync = async (fastify) => {
             const user = request.user;
             await service.deleteDeal(id, user.orgId!, user.id!, user.role!);
             return reply.code(204).send();
+        },
+    );
+
+    // =========================================================================
+    // FORECAST (explainable per-deal + pipeline-level)
+    // =========================================================================
+
+    // GET /pipeline/forecast?pipelineId=&periodEnd=
+    fastify.get(
+        "/forecast",
+        {
+            onRequest: [fastify.verifyJWT],
+            schema: { querystring: ForecastQuery },
+        },
+        async (request) => {
+            const q = request.query as z.infer<typeof ForecastQuery>;
+            const periodEnd = q.periodEnd ? new Date(q.periodEnd) : undefined;
+            return forecastService.forecastPipeline(q.pipelineId, request.user.orgId!, periodEnd);
+        },
+    );
+
+    // GET /pipeline/deals/:id/forecast
+    fastify.get(
+        "/deals/:id/forecast",
+        {
+            onRequest: [fastify.verifyJWT],
+            schema: { params: IdParams },
+        },
+        async (request, reply) => {
+            const { id } = request.params as { id: string };
+            const forecast = await forecastService.forecastDeal(id, request.user.orgId!);
+            if (!forecast) {
+                return reply.code(404).send({ message: "Deal not found or already closed" });
+            }
+            return forecast;
         },
     );
 };

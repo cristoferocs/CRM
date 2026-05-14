@@ -6,6 +6,7 @@ import type {
 import { prisma } from "../../lib/prisma.js";
 import { queues } from "../../queue/queues.js";
 import { getIO } from "../../websocket/socket.js";
+import { redactPii } from "../../lib/logger.js";
 import { evaluateConditionGroup, type EvaluationContext } from "./condition.evaluator.js";
 
 // ---------------------------------------------------------------------------
@@ -454,6 +455,32 @@ export async function runStageAutomationRule(
 // Logging
 // ---------------------------------------------------------------------------
 
+/**
+ * Strip the bodies of communication actions before persisting. These often
+ * contain rendered email / WhatsApp text with the recipient's PII inlined
+ * via {{ vars }}; we keep the action type + success state but drop the
+ * actual content so AutomationLog isn't a PII goldmine.
+ */
+function sanitizeActionResultsForLog(results: ActionExecutionResult[]): ActionExecutionResult[] {
+    const COMM_ACTIONS = new Set(["send_email", "send_whatsapp", "send_sms"]);
+    return results.map((r) => {
+        if (COMM_ACTIONS.has(r.actionType)) {
+            return {
+                actionType: r.actionType,
+                success: r.success,
+                error: r.error,
+                pausedForResume: r.pausedForResume,
+                // Replace any output with a sanitized stub.
+                output: { redacted: true, note: "communication body suppressed in log" },
+            };
+        }
+        // Other action types may have output objects with PII (e.g.
+        // `assign_to_user` could include contact preview) — pass through
+        // redactPii to mask common fields.
+        return { ...r, output: redactPii(r.output) };
+    });
+}
+
 export async function persistStageAutomationLog(opts: {
     rule: StageAutomationRule;
     job: StageAutomationJobData;
@@ -463,6 +490,7 @@ export async function persistStageAutomationLog(opts: {
     if (opts.job.dryRun) return null;
     const allOk = opts.results.every((r) => r.success);
     const skipped = opts.results.length === 0;
+    const sanitized = sanitizeActionResultsForLog(opts.results);
     try {
         return await prisma.stageAutomationLog.create({
             data: {
@@ -473,7 +501,7 @@ export async function persistStageAutomationLog(opts: {
                 ruleName: opts.rule.name,
                 trigger: opts.job.trigger,
                 status: skipped ? "SKIPPED" : allOk ? "SUCCESS" : "FAILED",
-                executedActions: opts.results as never,
+                executedActions: sanitized as never,
                 error: opts.results.find((r) => !r.success)?.error ?? null,
                 idempotencyKey: opts.idempotencyKey ?? null,
             },

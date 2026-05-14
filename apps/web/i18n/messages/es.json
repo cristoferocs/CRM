@@ -1,0 +1,55 @@
+{
+  "common": {
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "create": "Crear",
+    "loading": "Cargando…",
+    "search": "Buscar…",
+    "filter": "Filtrar",
+    "actions": "Acciones",
+    "close": "Cerrar",
+    "back": "Volver",
+    "next": "Siguiente",
+    "yes": "Sí",
+    "no": "No",
+    "required": "Obligatorio",
+    "optional": "Opcional",
+    "noResults": "Sin resultados",
+    "tryAgain": "Intentar de nuevo",
+    "today": "Hoy",
+    "yesterday": "Ayer"
+  },
+  "nav": {
+    "dashboard": "Panel",
+    "pipeline": "Embudo",
+    "contacts": "Contactos",
+    "inbox": "Bandeja",
+    "automations": "Automatizaciones",
+    "agents": "Agentes",
+    "knowledge": "Conocimiento",
+    "reports": "Informes",
+    "insights": "Análisis",
+    "documents": "Documentos",
+    "payments": "Pagos",
+    "gamification": "Gamificación",
+    "settings": "Configuración"
+  },
+  "auth": {
+    "login": "Iniciar sesión",
+    "logout": "Cerrar sesión",
+    "email": "Correo",
+    "password": "Contraseña",
+    "loginWithGoogle": "Iniciar sesión con Google",
+    "skipToContent": "Saltar al contenido principal"
+  },
+  "errors": {
+    "generic": "Algo salió mal. Inténtalo de nuevo.",
+    "network": "Fallo de conexión. Revisa tu internet y vuelve a intentar.",
+    "unauthorized": "Tu sesión expiró. Inicia sesión nuevamente.",
+    "forbidden": "No tienes permiso para esta acción.",
+    "notFound": "No encontrado.",
+    "conflict": "El registro fue modificado por otra persona. Recarga y vuelve a intentar."
+  }
+}

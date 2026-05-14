@@ -18,11 +18,16 @@
  *                "after X" from a previous event have a runtime hook.
  */
 import { Queue, Worker, type Job } from "bullmq";
+import { randomUUID } from "node:crypto";
 import { getRedis } from "../../lib/redis.js";
 import { prisma } from "../../lib/prisma.js";
 import { queues } from "../queues.js";
+import { logger } from "../../lib/logger.js";
+import { runWithContext } from "../../lib/request-context.js";
+import { captureFromWorker } from "../../lib/sentry.js";
 
 const SCHEDULER_QUEUE = "automation-scheduler";
+const schedLog = logger.child({ worker: "automation-scheduler" });
 
 function isInCurrentMinute(dateIso: string | Date | null | undefined, now = new Date()): boolean {
     if (!dateIso) return false;
@@ -176,18 +181,19 @@ export async function ensureAutomationScheduler(): Promise<void> {
 }
 
 export function createAutomationSchedulerWorker(): Worker {
-    const worker = new Worker(SCHEDULER_QUEUE, tick, {
+    const wrappedTick = (job: Job) =>
+        runWithContext({ reqId: `scheduler-${randomUUID()}` }, () => tick(job));
+    const worker = new Worker(SCHEDULER_QUEUE, wrappedTick, {
         connection: getRedis(),
         concurrency: 1,
     });
     worker.on("failed", (job, err) => {
-        console.error(
-            `[automation-scheduler] tick ${job?.id} failed:`,
-            err.message,
-        );
+        schedLog.error({ jobId: job?.id, err }, "tick failed");
+        captureFromWorker(err, { worker: "automation-scheduler", jobId: job?.id });
     });
     worker.on("error", (err) => {
-        console.error("[automation-scheduler] worker error:", err);
+        schedLog.error({ err }, "worker error");
+        captureFromWorker(err, { worker: "automation-scheduler" });
     });
     return worker;
 }

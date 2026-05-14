@@ -44,6 +44,9 @@ import {
 import { NodeLibrary } from "@/components/modules/automations/NodeLibrary";
 import { PropertiesPanel } from "@/components/modules/automations/PropertiesPanel";
 import { LogsDrawer } from "@/components/modules/automations/LogsDrawer";
+import { SimulatorModal } from "@/components/modules/automations/simulator-modal";
+import { TestTube2 } from "lucide-react";
+import type { SimulateInput } from "@/hooks/useSimulator";
 import { NODE_CATALOG, getNodeDef, type NodeDef } from "@/components/modules/automations/node-catalog";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -148,6 +151,7 @@ function AutomationEditorInner() {
     const [triggerType, setTriggerType] = useState("CONTACT_CREATED");
     const [isActive, setIsActive] = useState(false);
     const [logsOpen, setLogsOpen] = useState(false);
+    const [simulatorOpen, setSimulatorOpen] = useState(false);
 
     const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -382,6 +386,16 @@ function AutomationEditorInner() {
                         Testar
                     </Button>
                 )}
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                    onClick={() => setSimulatorOpen(true)}
+                    title="Replay desta regra contra o histórico recente, sem executar nenhuma ação"
+                >
+                    <TestTube2 className="h-3.5 w-3.5" />
+                    Simular
+                </Button>
                 <Button size="sm" className="gap-1.5" onClick={handleSave} disabled={save.isPending}>
                     {save.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
                     Salvar
@@ -427,6 +441,25 @@ function AutomationEditorInner() {
             </div>
 
             <LogsDrawer automationId={isNew ? undefined : id} open={logsOpen} onOpenChange={setLogsOpen} />
+
+            <SimulatorModal
+                open={simulatorOpen}
+                onOpenChange={setSimulatorOpen}
+                input={
+                    simulatorOpen
+                        ? ({
+                              triggerType,
+                              triggerConfig: (nodes.find(n => (n.data as FlowNodeData).type === "trigger")
+                                  ?.data as FlowNodeData | undefined)?.config,
+                              // The visual editor doesn't currently surface a separate
+                              // conditions list at the automation level — that lives
+                              // inside specific nodes. For now we simulate trigger-only;
+                              // node-level conditions get evaluated in the actual run.
+                              conditions: [],
+                          } satisfies SimulateInput)
+                        : null
+                }
+            />
         </div>
     );
 }
