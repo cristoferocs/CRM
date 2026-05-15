@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -24,7 +24,9 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { TagAutocomplete, type TagOption } from "@/components/ui/tag-autocomplete";
 import { useCreateContact, useUpdateContact, type Contact } from "@/hooks/useContacts";
+import { useTags, useCreateTag } from "@/hooks/useTags";
 
 // ── Schema ───────────────────────────────────────────────────────────────────
 
@@ -35,7 +37,6 @@ const contactSchema = z.object({
     status: z.enum(["lead", "prospect", "client", "proposal", "lost", "inactive"]),
     source: z.string().optional(),
     channel: z.string().optional(),
-    tags: z.string().optional(), // comma-separated
 });
 
 type ContactFormValues = z.infer<typeof contactSchema>;
@@ -56,6 +57,11 @@ export function ContactSheet({ open, onOpenChange, contact }: ContactSheetProps)
     const createContact = useCreateContact();
     const updateContact = useUpdateContact(contact?.id ?? "");
 
+    const [selectedTags, setSelectedTags] = useState<TagOption[]>([]);
+    const [tagSearch, setTagSearch] = useState("");
+    const { data: tagOptions = [] } = useTags({ search: tagSearch, limit: 50 });
+    const createTag = useCreateTag();
+
     const {
         register,
         handleSubmit,
@@ -72,7 +78,6 @@ export function ContactSheet({ open, onOpenChange, contact }: ContactSheetProps)
             status: "lead",
             source: "",
             channel: "",
-            tags: "",
         },
     });
 
@@ -86,8 +91,10 @@ export function ContactSheet({ open, onOpenChange, contact }: ContactSheetProps)
                 status: contact.status as ContactFormValues["status"],
                 source: contact.source ?? "",
                 channel: contact.channel ?? "",
-                tags: contact.tags?.join(", ") ?? "",
             });
+            setSelectedTags(
+                (contact.tags ?? []).map((t) => ({ id: t.id, name: t.name, color: t.color })),
+            );
         } else {
             reset({
                 name: "",
@@ -96,8 +103,8 @@ export function ContactSheet({ open, onOpenChange, contact }: ContactSheetProps)
                 status: "lead",
                 source: "",
                 channel: "",
-                tags: "",
             });
+            setSelectedTags([]);
         }
     }, [contact, reset]);
 
@@ -105,9 +112,7 @@ export function ContactSheet({ open, onOpenChange, contact }: ContactSheetProps)
         try {
             const payload = {
                 ...values,
-                tags: values.tags
-                    ? values.tags.split(",").map((t) => t.trim()).filter(Boolean)
-                    : [],
+                tagIds: selectedTags.map((t) => t.id),
                 email: values.email || undefined,
                 phone: values.phone || undefined,
                 source: values.source || undefined,
@@ -237,13 +242,21 @@ export function ContactSheet({ open, onOpenChange, contact }: ContactSheetProps)
 
                     {/* Tags */}
                     <div className="space-y-1.5">
-                        <Label htmlFor="tags">Tags</Label>
-                        <Input
-                            id="tags"
-                            placeholder="vip, premium, parceiro (separadas por vírgula)"
-                            {...register("tags")}
+                        <Label>Tags</Label>
+                        <TagAutocomplete
+                            value={selectedTags}
+                            options={tagOptions}
+                            onChange={setSelectedTags}
+                            onSearchChange={setTagSearch}
+                            onCreate={async (name) => {
+                                const created = await createTag.mutateAsync({ name });
+                                return { id: created.id, name: created.name, color: created.color };
+                            }}
+                            placeholder="Digite para buscar ou criar..."
                         />
-                        <p className="text-[11px] text-t3">Separe as tags por vírgula</p>
+                        <p className="text-[11px] text-t3">
+                            Digite para buscar uma tag existente ou criar uma nova.
+                        </p>
                     </div>
                 </form>
 

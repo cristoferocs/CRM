@@ -1,5 +1,6 @@
 import { ContactsRepository } from "./module.repository.js";
 import { fireAutomation } from "../automations/automation-dispatcher.js";
+import { TagsService } from "../tags/module.service.js";
 import type {
     ContactFilters,
     CreateContactInput,
@@ -85,10 +86,41 @@ const CHANNEL_TO_SOURCE: Record<string, string> = {
 // ---------------------------------------------------------------------------
 
 export class ContactsService {
-    constructor(private readonly repo = new ContactsRepository()) { }
+    constructor(
+        private readonly repo = new ContactsRepository(),
+        private readonly tags = new TagsService(),
+    ) { }
+
+    /**
+     * Resolves the `tags` filter (CSV of either ids or names) into a list of
+     * tag ids for the repository to query against. Unknown names are silently
+     * ignored — they can't match anything anyway.
+     */
+    private async resolveTagFilter(orgId: string, csv: string | undefined): Promise<string[] | undefined> {
+        if (!csv) return undefined;
+        const tokens = csv.split(",").map((t) => t.trim()).filter(Boolean);
+        if (tokens.length === 0) return undefined;
+
+        // Anything that doesn't look like a cuid (~24 chars, alphanumeric) is
+        // treated as a name lookup. We still try ids-as-names to be lenient.
+        const ids = new Set<string>();
+        const namesToResolve: string[] = [];
+        for (const tok of tokens) {
+            if (/^[a-z0-9]{20,}$/i.test(tok)) ids.add(tok);
+            else namesToResolve.push(tok);
+        }
+
+        for (const name of namesToResolve) {
+            const tag = await this.tags["repo"].findByName(name, orgId);
+            if (tag) ids.add(tag.id);
+        }
+
+        return Array.from(ids);
+    }
 
     async list(orgId: string, filters: ContactFilters) {
-        const { data, total } = await this.repo.list(orgId, filters);
+        const tagIds = await this.resolveTagFilter(orgId, filters.tags);
+        const { data, total } = await this.repo.list(orgId, { ...filters, tagIds });
         return {
             data,
             total,
@@ -160,7 +192,21 @@ export class ContactsService {
             }
         }
 
-        const contact = await this.repo.create({ ...data, orgId });
+        // Merge explicit tagIds with legacy free-text tag names (CSV importer
+        // and external API still send `tags: string[]`). Free-text names get
+        // resolved/created so nothing is lost. We also dual-write the legacy
+        // `contacts.tags` String[] column with the resolved names so existing
+        // Prisma readers (automation executors, agent tools, etc.) keep
+        // working during the soak period before the column is dropped.
+        const resolved = await this.resolveTags(orgId, data.tagIds, data.tags, createdByUserId);
+
+        const contact = await this.repo.create({
+            ...data,
+            orgId,
+            ...(resolved
+                ? { tagIds: resolved.ids, tags: resolved.names }
+                : {}),
+        });
 
         await this.repo.createTimelineEvent({
             type: "CONTACT_CREATED",
@@ -174,10 +220,45 @@ export class ContactsService {
         fireAutomation("CONTACT_CREATED", {
             contactId: contact.id,
             source: contact.source,
-            tags: contact.tags,
+            tags: contact.tags.map((t) => t.name),
         }, orgId);
 
         return contact;
+    }
+
+    /**
+     * Build the final tag set for create/update, returning both ids (for the
+     * relational join) and names (for the legacy String[] column dual-write).
+     *
+     * - `explicitIds` are validated to belong to org.
+     * - `legacyNames` (if any) are find-or-created.
+     *
+     * Returns undefined when neither input was provided so callers can leave
+     * tag relations untouched.
+     */
+    private async resolveTags(
+        orgId: string,
+        explicitIds: string[] | undefined,
+        legacyNames: string[] | undefined,
+        userId?: string,
+    ): Promise<{ ids: string[]; names: string[] } | undefined> {
+        if (explicitIds === undefined && (!legacyNames || legacyNames.length === 0)) {
+            return undefined;
+        }
+        const byId = new Map<string, { id: string; name: string }>();
+        if (explicitIds && explicitIds.length > 0) {
+            const validated = await this.tags.resolveIds(explicitIds, orgId);
+            validated.forEach((t) => byId.set(t.id, { id: t.id, name: t.name }));
+        }
+        if (legacyNames && legacyNames.length > 0) {
+            for (const name of legacyNames) {
+                if (!name?.trim()) continue;
+                const tag = await this.tags.findOrCreateByName(name, orgId, userId);
+                byId.set(tag.id, { id: tag.id, name: tag.name });
+            }
+        }
+        const list = Array.from(byId.values());
+        return { ids: list.map((t) => t.id), names: list.map((t) => t.name) };
     }
 
     async update(
@@ -212,7 +293,15 @@ export class ContactsService {
             }
         }
 
-        const updated = await this.repo.update(id, orgId, data);
+        // Resolve tagIds explicitly OR re-derive from legacy `tags` names.
+        // Dual-write the legacy String[] column so existing Prisma readers
+        // keep working during the soak period.
+        const resolved = await this.resolveTags(orgId, data.tagIds, data.tags, updatedByUserId);
+
+        const updated = await this.repo.update(id, orgId, {
+            ...data,
+            ...(resolved ? { tagIds: resolved.ids, tags: resolved.names } : {}),
+        });
 
         await this.repo.createTimelineEvent({
             type: "CONTACT_UPDATED",
@@ -420,40 +509,55 @@ export class ContactsService {
         return this.repo.getContactConversations(id, orgId);
     }
 
-    async addTag(id: string, tag: string, orgId: string, userId?: string) {
+    /**
+     * Legacy: accepts either a tag id (cuid-like) or a free-text tag name. If
+     * a name is passed and doesn't exist, the tag is auto-created with a
+     * default color so the legacy API stays usable for external integrations.
+     */
+    async addTag(id: string, tagInput: string, orgId: string, userId?: string) {
         const contact = await this.repo.findById(id, orgId);
         if (!contact) {
             throw Object.assign(new Error("Contact not found."), { statusCode: 404 });
         }
 
-        const updated = await this.repo.addTag(id, orgId, tag);
+        // Resolve to a Tag row.
+        let tag = await this.tags["repo"].findById(tagInput, orgId);
+        if (!tag) {
+            tag = await this.tags.findOrCreateByName(tagInput, orgId, userId);
+        }
+
+        const updated = await this.repo.addTagRelation(id, orgId, tag.id);
 
         await this.repo.createTimelineEvent({
             type: "TAG_ADDED",
-            title: `Tag added: ${tag}`,
-            metadata: { tag },
+            title: `Tag added: ${tag.name}`,
+            metadata: { tag: tag.name, tagId: tag.id },
             contactId: id,
             userId,
             orgId,
         });
 
-        fireAutomation("CONTACT_TAG_ADDED", { contactId: id, tag }, orgId);
+        fireAutomation("CONTACT_TAG_ADDED", { contactId: id, tag: tag.name, tagId: tag.id }, orgId);
 
         return updated;
     }
 
-    async removeTag(id: string, tag: string, orgId: string, userId?: string) {
+    async removeTag(id: string, tagInput: string, orgId: string, userId?: string) {
         const contact = await this.repo.findById(id, orgId);
         if (!contact) {
             throw Object.assign(new Error("Contact not found."), { statusCode: 404 });
         }
 
-        const updated = await this.repo.removeTag(id, orgId, tag);
+        let tag = await this.tags["repo"].findById(tagInput, orgId);
+        if (!tag) tag = await this.tags["repo"].findByName(tagInput, orgId);
+        if (!tag) return contact;
+
+        const updated = await this.repo.removeTagRelation(id, orgId, tag.id);
 
         await this.repo.createTimelineEvent({
             type: "TAG_REMOVED",
-            title: `Tag removed: ${tag}`,
-            metadata: { tag },
+            title: `Tag removed: ${tag.name}`,
+            metadata: { tag: tag.name, tagId: tag.id },
             contactId: id,
             userId,
             orgId,

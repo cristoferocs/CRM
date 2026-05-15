@@ -5,6 +5,7 @@ import { Draggable } from "@hello-pangea/dnd";
 import { AlertTriangle, Bot, Clock, Edit } from "lucide-react";
 import { differenceInDays } from "date-fns";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { TagChip } from "@/components/ui/tag-chip";
 import { cn, formatCurrency, formatRelative, getInitials } from "@/lib/utils";
 import type { PipelineDeal } from "@/hooks/usePipeline";
 
@@ -157,6 +158,20 @@ export function DealCard({ deal, index, onClick, pulsating = false }: DealCardPr
                                     </div>
                                     <span className="font-mono text-[9px] text-violet/70">{confidencePct}%</span>
                                 </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Tags */}
+                    {deal.tags && deal.tags.length > 0 && (
+                        <div className="mb-1.5 flex flex-wrap items-center gap-1">
+                            {deal.tags.slice(0, 3).map((tag) => (
+                                <TagChip key={tag.id} name={tag.name} color={tag.color} compact />
+                            ))}
+                            {deal.tags.length > 3 && (
+                                <span className="font-mono text-[10px] text-t3">
+                                    +{deal.tags.length - 3}
+                                </span>
                             )}
                         </div>
                     )}

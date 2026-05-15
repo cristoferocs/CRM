@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import type { Tag } from "@/hooks/useTags";
 
 export interface Contact {
     id: string;
@@ -16,7 +17,7 @@ export interface Contact {
     value: number | null;
     organizationId: string;
     assignedToId: string | null;
-    tags: string[];
+    tags: Tag[];
     createdAt: string;
     updatedAt: string;
 }
@@ -25,6 +26,8 @@ export interface ContactFilters {
     search?: string;
     status?: string;
     source?: string;
+    /** Comma-separated list of tag ids or names. The API resolves either form. */
+    tags?: string;
     page?: number;
     limit?: number;
 }
@@ -50,6 +53,7 @@ function normalizeContact(contact: Contact & { type?: string; orgId?: string }):
         status,
         organizationId: contact.organizationId ?? contact.orgId ?? "",
         assignedToId: contact.assignedToId ?? null,
+        tags: Array.isArray(contact.tags) ? (contact.tags as Tag[]) : [],
     };
 }
 
@@ -60,6 +64,7 @@ function normalizeContactFilters(filters: ContactFilters) {
         search: filters.search,
         type,
         source: source || undefined,
+        tags: filters.tags || undefined,
         page: filters.page,
         limit: filters.limit,
     };

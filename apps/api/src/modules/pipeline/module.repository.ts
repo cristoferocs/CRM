@@ -46,6 +46,12 @@ const stageSummarySelect = {
     agent: { select: agentMiniSelect },
 } as const;
 
+const tagMiniSelect = {
+    id: true,
+    name: true,
+    color: true,
+} as const;
+
 const dealListSelect = {
     id: true,
     title: true,
@@ -89,6 +95,9 @@ const dealListSelect = {
     },
     owner: {
         select: { id: true, name: true, avatar: true, email: true },
+    },
+    tagRelations: {
+        select: { tag: { select: tagMiniSelect } },
     },
 } as const;
 
@@ -413,7 +422,7 @@ export class PipelineRepository {
     // KANBAN
     // =========================================================================
 
-    async getPipelineKanban(pipelineId: string, orgId: string, filters: KanbanFilters) {
+    async getPipelineKanban(pipelineId: string, orgId: string, filters: KanbanFilters & { tagIds?: string[] }) {
         const pipeline = await prisma.pipeline.findFirst({
             where: { id: pipelineId, orgId, isActive: true },
             include: {
@@ -441,9 +450,18 @@ export class PipelineRepository {
                     },
                 }
                 : {}),
-            ...(filters.tags
-                ? { contact: { tags: { hasSome: filters.tags.split(",").map((t) => t.trim()) } } }
-                : {}),
+            // Filter by deal-level tags first; fall back to contact-level tag
+            // names so existing callers that pass legacy CSV names still work.
+            ...(filters.tagIds && filters.tagIds.length > 0
+                ? { tagRelations: { some: { tagId: { in: filters.tagIds } } } }
+                : filters.tags
+                    ? {
+                        OR: [
+                            { tagRelations: { some: { tag: { name: { in: filters.tags.split(",").map((t) => t.trim()) } } } } },
+                            { contact: { tags: { hasSome: filters.tags.split(",").map((t) => t.trim()) } } },
+                        ],
+                    }
+                    : {}),
         };
 
         const deals = await prisma.deal.findMany({
@@ -543,7 +561,7 @@ export class PipelineRepository {
         });
     }
 
-    async listDeals(orgId: string, filters: DealFilters, scopeWhere?: Record<string, unknown>) {
+    async listDeals(orgId: string, filters: DealFilters & { tagIds?: string[] }, scopeWhere?: Record<string, unknown>) {
         const { search, stageId, pipelineId, ownerId, contactId, isRotting, valueMin, valueMax, dateFrom, dateTo, page, limit } = filters;
         const skip = (page - 1) * limit;
 
@@ -557,6 +575,9 @@ export class PipelineRepository {
             ...(ownerId ? { ownerId } : {}),
             ...(contactId ? { contactId } : {}),
             ...(isRotting !== undefined ? { isRotting } : {}),
+            ...(filters.tagIds && filters.tagIds.length > 0
+                ? { tagRelations: { some: { tagId: { in: filters.tagIds } } } }
+                : {}),
             ...(valueMin !== undefined || valueMax !== undefined
                 ? { value: { ...(valueMin !== undefined ? { gte: valueMin } : {}), ...(valueMax !== undefined ? { lte: valueMax } : {}) } }
                 : {}),
@@ -597,6 +618,9 @@ export class PipelineRepository {
                     utmSource: data.utmSource ?? null,
                     utmCampaign: data.utmCampaign ?? null,
                     adId: data.adId ?? null,
+                    ...(data.tagIds && data.tagIds.length > 0
+                        ? { tagRelations: { create: data.tagIds.map((tagId) => ({ tagId })) } }
+                        : {}),
                 },
                 select: dealListSelect,
             });
@@ -630,20 +654,33 @@ export class PipelineRepository {
     }
 
     async updateDeal(id: string, data: UpdateDealInput, orgId: string) {
-        await prisma.deal.updateMany({
-            where: { id, orgId, isActive: true },
-            data: {
-                ...(data.title !== undefined ? { title: data.title } : {}),
-                ...(data.value !== undefined ? { value: data.value ?? 0 } : {}),
-                ...(data.currency !== undefined ? { currency: data.currency } : {}),
-                ...(data.ownerId !== undefined ? { ownerId: data.ownerId } : {}),
-                ...(data.probability !== undefined ? { probability: data.probability } : {}),
-                ...(data.expectedCloseAt !== undefined
-                    ? { expectedCloseAt: data.expectedCloseAt ? new Date(data.expectedCloseAt) : null }
-                    : {}),
-                ...(data.customFields !== undefined ? { customFields: data.customFields as never } : {}),
-            },
+        await prisma.$transaction(async (tx) => {
+            await tx.deal.updateMany({
+                where: { id, orgId, isActive: true },
+                data: {
+                    ...(data.title !== undefined ? { title: data.title } : {}),
+                    ...(data.value !== undefined ? { value: data.value ?? 0 } : {}),
+                    ...(data.currency !== undefined ? { currency: data.currency } : {}),
+                    ...(data.ownerId !== undefined ? { ownerId: data.ownerId } : {}),
+                    ...(data.probability !== undefined ? { probability: data.probability } : {}),
+                    ...(data.expectedCloseAt !== undefined
+                        ? { expectedCloseAt: data.expectedCloseAt ? new Date(data.expectedCloseAt) : null }
+                        : {}),
+                    ...(data.customFields !== undefined ? { customFields: data.customFields as never } : {}),
+                },
+            });
+
+            if (data.tagIds !== undefined) {
+                await tx.dealTag.deleteMany({ where: { dealId: id } });
+                if (data.tagIds.length > 0) {
+                    await tx.dealTag.createMany({
+                        data: data.tagIds.map((tagId) => ({ dealId: id, tagId })),
+                        skipDuplicates: true,
+                    });
+                }
+            }
         });
+
         return this.findDealById(id, orgId);
     }
 

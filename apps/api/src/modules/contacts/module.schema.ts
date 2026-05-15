@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TagResponseSchema } from "../tags/module.schema.js";
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -37,7 +38,13 @@ export const CreateContactSchema = z.object({
     adsetId: z.string().max(200).optional(),
     campaignId: z.string().max(200).optional(),
     pixelSessionId: z.string().max(200).optional(),
+    /**
+     * Legacy free-text tag names. Still accepted for backwards compat with the
+     * CSV importer and external API clients — names get resolved/created into
+     * Tag rows in the service. New UI clients should send `tagIds` instead.
+     */
     tags: z.array(z.string().max(100)).default([]),
+    tagIds: z.array(z.string()).optional(),
     customFields: z.record(z.string(), z.unknown()).default({}),
     companyId: z.string().optional(),
     branchId: z.string().optional(),
@@ -61,6 +68,7 @@ export const UpdateContactSchema = z.object({
     campaignId: z.string().max(200).nullable().optional(),
     pixelSessionId: z.string().max(200).nullable().optional(),
     tags: z.array(z.string().max(100)).optional(),
+    tagIds: z.array(z.string()).optional(),
     customFields: z.record(z.string(), z.unknown()).optional(),
     companyId: z.string().nullable().optional(),
     branchId: z.string().nullable().optional(),
@@ -70,6 +78,10 @@ export const ContactFiltersSchema = z.object({
     search: z.string().max(200).optional(),
     type: ContactTypeEnum.optional(),
     source: ContactSourceEnum.optional(),
+    /**
+     * Comma-separated list of either tag ids or tag names. Resolved by the
+     * service so callers can pass whichever they have on hand.
+     */
     tags: z.string().optional(),
     assignedTo: z.string().optional(),
     dateFrom: z.string().optional(),
@@ -108,7 +120,11 @@ export const ContactResponseSchema = z.object({
     adsetId: z.string().nullable(),
     campaignId: z.string().nullable(),
     pixelSessionId: z.string().nullable(),
-    tags: z.array(z.string()),
+    /**
+     * Resolved Tag objects for this contact. The legacy `String[]` shape is no
+     * longer returned — clients should read `.tags[].name` / `.tags[].color`.
+     */
+    tags: z.array(TagResponseSchema),
     customFields: z.record(z.string(), z.unknown()),
     orgId: z.string(),
     companyId: z.string().nullable(),

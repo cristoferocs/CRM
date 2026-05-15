@@ -172,7 +172,11 @@ export default function PipelinePage() {
     // ── Data ───────────────────────────────────────────────────────────────────
     const { data: pipelines = [], isLoading: loadingPipelines } = usePipelines();
     const activePipelineId = selectedId || pipelines[0]?.id || "";
-    const { data: pipeline, isLoading: loadingPipeline } = usePipeline(activePipelineId);
+    // ── UI state ───────────────────────────────────────────────────────────────
+    const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
+    const { data: pipeline, isLoading: loadingPipeline } = usePipeline(activePipelineId, {
+        tags: filters.tagIds.length > 0 ? filters.tagIds.join(",") : undefined,
+    });
 
     useEffect(() => {
         if (!selectedId && pipelines.length > 0 && pipelines[0]) {
@@ -184,7 +188,6 @@ export default function PipelinePage() {
     const moveDeal = useMoveDeal();
 
     // ── UI state ───────────────────────────────────────────────────────────────
-    const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
     const [selectedDeal, setSelectedDeal] = useState<PipelineDeal | null>(null);
     const [newDealOpen, setNewDealOpen] = useState(false);
     const [defaultStageId, setDefaultStageId] = useState("");
@@ -284,6 +287,11 @@ export default function PipelinePage() {
         if (filters.isRotting && !d.isRotting) return false;
         if (filters.hasAgent && !d.activeAgentSessionId) return false;
         if (filters.ownerId && d.ownerId !== filters.ownerId) return false;
+        if (filters.tagIds.length > 0) {
+            const dealTagIds = new Set((d.tags ?? []).map((t) => t.id));
+            // OR semantics: keep deals matching at least one selected tag.
+            if (!filters.tagIds.some((id) => dealTagIds.has(id))) return false;
+        }
         return true;
     });
 
