@@ -10,6 +10,7 @@ import {
     Bell,
     Palette,
     Shield,
+    Tag as TagIcon,
     ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -26,6 +27,7 @@ const SETTINGS_NAV = [
         group: "Produto",
         items: [
             { href: "/settings/pipeline", icon: Kanban, label: "Funis de Venda", desc: "Configure etapas e campos" },
+            { href: "/settings/tags", icon: TagIcon, label: "Tags", desc: "Etiquetas para contatos e deals" },
             { href: "/settings/integrations", icon: Plug, label: "Integrações", desc: "WhatsApp, Instagram, APIs" },
         ],
     },

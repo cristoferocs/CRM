@@ -284,44 +284,44 @@ enum AITrainingDataType {
 }
 
 enum PipelineType {
-  SALES          // funil de vendas genérico
-  PRODUCT        // por produto específico
-  SERVICE        // por serviço específico
-  CAMPAIGN       // por campanha de marketing/ads
-  PARTNERSHIP    // parcerias e canais
-  RENEWAL        // renovações e upsell
-  RECRUITMENT    // RH e recrutamento
-  CUSTOM         // propósito livre
+  SALES // funil de vendas genérico
+  PRODUCT // por produto específico
+  SERVICE // por serviço específico
+  CAMPAIGN // por campanha de marketing/ads
+  PARTNERSHIP // parcerias e canais
+  RENEWAL // renovações e upsell
+  RECRUITMENT // RH e recrutamento
+  CUSTOM // propósito livre
 }
 
 enum PipelineVisibility {
-  ALL            // todos da org
-  DEPARTMENT     // apenas departamentos em allowedRoles
-  ROLES          // apenas papéis específicos
+  ALL // todos da org
+  DEPARTMENT // apenas departamentos em allowedRoles
+  ROLES // apenas papéis específicos
 }
 
 enum StageType {
-  REGULAR   // etapa normal
-  ENTRY     // primeiro contato (pode ter múltiplas)
+  REGULAR // etapa normal
+  ENTRY // primeiro contato (pode ter múltiplas)
   NURTURING // nutrição/aquecimento
-  DECISION  // etapa decisiva
-  WON       // ganho
-  LOST      // perdido
-  ON_HOLD   // pausado/aguardando
+  DECISION // etapa decisiva
+  WON // ganho
+  LOST // perdido
+  ON_HOLD // pausado/aguardando
 }
 
 enum StageAgentTrigger {
-  MANUAL       // humano decide quando acionar o agente
-  AUTO_ENTER   // agente acionado automaticamente ao entrar na etapa
+  MANUAL // humano decide quando acionar o agente
+  AUTO_ENTER // agente acionado automaticamente ao entrar na etapa
   AUTO_ROTTING // agente acionado quando deal ficar parado
-  SCHEDULED    // agente acionado em horário configurado
+  SCHEDULED // agente acionado em horário configurado
 }
 
 enum MovedByType {
-  HUMAN      // vendedor humano
-  AGENT      // super agente
+  HUMAN // vendedor humano
+  AGENT // super agente
   AUTOMATION // automação do sistema
-  SYSTEM     // sistema (ex: rotting)
+  SYSTEM // sistema (ex: rotting)
 }
 
 // =============================================================================
@@ -329,47 +329,48 @@ enum MovedByType {
 // =============================================================================
 
 model Organization {
-  id        String   @id @default(cuid())
-  name      String
-  slug      String   @unique
-  plan                 Plan     @default(STARTER)
-  settings             Json     @default("{}")
-  whiteLabelSettings   Json?    // configurações de identidade visual
-  isActive             Boolean  @default(true)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  name               String
+  slug               String   @unique
+  plan               Plan     @default(STARTER)
+  settings           Json     @default("{}")
+  whiteLabelSettings Json? // configurações de identidade visual
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  users            User[]
-  contacts         Contact[]
-  deals            Deal[]
-  conversations    Conversation[]
-  departments      Department[]
-  pipelines        Pipeline[]
-  companies        Company[]
-  payments         Payment[]
-  webhooks         Webhook[]
-  automations      Automation[]
-  timeline         TimelineEvent[]
-  auditLogs        AuditLog[]
-  automationLogs   AutomationLog[]
+  users               User[]
+  contacts            Contact[]
+  deals               Deal[]
+  conversations       Conversation[]
+  departments         Department[]
+  pipelines           Pipeline[]
+  companies           Company[]
+  payments            Payment[]
+  webhooks            Webhook[]
+  automations         Automation[]
+  timeline            TimelineEvent[]
+  auditLogs           AuditLog[]
+  automationLogs      AutomationLog[]
   stageAutomationLogs StageAutomationLog[]
-  knowledgeBases   KnowledgeBase[]
-  aiAgents         AIAgent[]
-  aiInsights       AIInsight[]
-  aiTrainingData   AITrainingData[]
-  agentLearningJobs AgentLearningJob[]
-  messageTemplates MessageTemplate[]
-  branches         Branch[]
-  whiteLabelDomain WhiteLabelDomain?
-  integrations     OrgIntegration[]
-  comments         Comment[]
-  notifications    Notification[]
-  documents        Document[]
-  documentTemplates DocumentTemplate[]
-  achievements     Achievement[]
-  goals            Goal[]
-  leadScoringConfig LeadScoringConfig?
+  knowledgeBases      KnowledgeBase[]
+  aiAgents            AIAgent[]
+  aiInsights          AIInsight[]
+  aiTrainingData      AITrainingData[]
+  agentLearningJobs   AgentLearningJob[]
+  messageTemplates    MessageTemplate[]
+  branches            Branch[]
+  whiteLabelDomain    WhiteLabelDomain?
+  integrations        OrgIntegration[]
+  comments            Comment[]
+  notifications       Notification[]
+  documents           Document[]
+  documentTemplates   DocumentTemplate[]
+  achievements        Achievement[]
+  goals               Goal[]
+  leadScoringConfig   LeadScoringConfig?
   zapierSubscriptions ZapierSubscription[]
+  tags                Tag[]
 
   @@map("organizations")
 }
@@ -379,18 +380,18 @@ model Organization {
 // =============================================================================
 
 model Branch {
-  id              String   @id @default(cuid())
-  name            String
-  code            String?              // código da filial (ex: "SP-01", "RJ-02")
-  address         String?
-  phone           String?
-  email           String?
-  isActive        Boolean  @default(true)
-  isHeadquarter   Boolean  @default(false)  // true = matriz
-  settings        Json?                // configurações específicas da filial
-  orgId           String
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id            String   @id @default(cuid())
+  name          String
+  code          String? // código da filial (ex: "SP-01", "RJ-02")
+  address       String?
+  phone         String?
+  email         String?
+  isActive      Boolean  @default(true)
+  isHeadquarter Boolean  @default(false) // true = matriz
+  settings      Json? // configurações específicas da filial
+  orgId         String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   org           Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
   users         User[]
@@ -398,8 +399,8 @@ model Branch {
   deals         Deal[]
   conversations Conversation[]
 
-  @@index([orgId])
   @@unique([orgId, code])
+  @@index([orgId])
   @@map("branches")
 }
 
@@ -425,33 +426,33 @@ model Department {
 // =============================================================================
 
 model User {
-  id          String   @id @default(cuid())
-  firebaseUid String   @unique
-  email       String
-  name        String
-  avatar      String?
-  role        UserRole @default(SELLER)
-  orgId       String
+  id           String   @id @default(cuid())
+  firebaseUid  String   @unique
+  email        String
+  name         String
+  avatar       String?
+  role         UserRole @default(SELLER)
+  orgId        String
   departmentId String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  branchId     String?
+  branchId String?
 
-  org          Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  department   Department?   @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  branch       Branch?       @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  deals        Deal[]        @relation("DealOwner")
-  conversations Conversation[] @relation("ConversationAgent")
-  activities   Activity[]
-  messages     Message[]
+  org            Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  department     Department?     @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  branch         Branch?         @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  deals          Deal[]          @relation("DealOwner")
+  conversations  Conversation[]  @relation("ConversationAgent")
+  activities     Activity[]
+  messages       Message[]
   timelineEvents TimelineEvent[]
-  auditLogs    AuditLog[]
-  comments     Comment[]     @relation("CommentAuthor")
-  notifications Notification[]
-  achievements  Achievement[]
-  goals         Goal[]
+  auditLogs      AuditLog[]
+  comments       Comment[]       @relation("CommentAuthor")
+  notifications  Notification[]
+  achievements   Achievement[]
+  goals          Goal[]
 
   @@index([orgId])
   @@index([email])
@@ -464,48 +465,52 @@ model User {
 // =============================================================================
 
 model Contact {
-  id           String        @id @default(cuid())
-  name         String
-  email        String?
-  phone        String?
-  document     String?
-  avatar       String?
-  type         ContactType   @default(LEAD)
-  source       ContactSource @default(MANUAL)
-  utmSource    String?
-  utmMedium    String?
-  utmCampaign  String?
-  utmContent   String?
-  utmTerm      String?
-  adId         String?
-  adsetId      String?
-  campaignId   String?
-  pixelSessionId String?
-  tags         String[]
-  customFields Json          @default("{}")
+  id              String        @id @default(cuid())
+  name            String
+  email           String?
+  phone           String?
+  document        String?
+  avatar          String?
+  type            ContactType   @default(LEAD)
+  source          ContactSource @default(MANUAL)
+  utmSource       String?
+  utmMedium       String?
+  utmCampaign     String?
+  utmContent      String?
+  utmTerm         String?
+  adId            String?
+  adsetId         String?
+  campaignId      String?
+  pixelSessionId  String?
+  /// Legacy: kept transiently for the relational-tag migration. New code reads
+  /// `tagRelations` and exposes the resolved Tag list. This column will be
+  /// dropped in a follow-up migration after the soak period.
+  tags            String[]
+  tagRelations    ContactTag[]
+  customFields    Json          @default("{}")
   // Lead scoring
-  leadScore        Int?
-  leadTemperature  String?
-  lastScoredAt     DateTime?
-  scoreHistory     Json      @default("[]")
-  orgId        String
-  companyId    String?
-  branchId     String?
-  isActive     Boolean       @default(true)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  leadScore       Int?
+  leadTemperature String?
+  lastScoredAt    DateTime?
+  scoreHistory    Json          @default("[]")
+  orgId           String
+  companyId       String?
+  branchId        String?
+  isActive        Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
-  org           Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  company       Company?       @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  branch        Branch?        @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  deals         Deal[]
-  conversations Conversation[]
-  timeline      TimelineEvent[]
-  activities    Activity[]
-  payments      Payment[]
+  org            Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  company        Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  branch         Branch?         @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  deals          Deal[]
+  conversations  Conversation[]
+  timeline       TimelineEvent[]
+  activities     Activity[]
+  payments       Payment[]
   automationLogs AutomationLog[]
-  comments      Comment[]
-  documents     Document[]
+  comments       Comment[]
+  documents      Document[]
 
   @@index([orgId])
   @@index([email])
@@ -547,16 +552,16 @@ model Pipeline {
   icon        String? // emoji ou nome de ícone
 
   // Contexto e propósito
-  type        PipelineType
-  context     Json?   // metadados livres: campanha, produto, serviço, etc.
-  tags        String[]
+  type    PipelineType
+  context Json? // metadados livres: campanha, produto, serviço, etc.
+  tags    String[]
 
   // Configuração
-  isDefault        Boolean @default(false)
-  isActive         Boolean @default(true)
-  rotting          Boolean @default(true)   // ativar alerta de deals parados
-  rottingDays      Int     @default(7)      // dias sem atividade = alerta
-  currency         String  @default("BRL")
+  isDefault          Boolean @default(false)
+  isActive           Boolean @default(true)
+  rotting            Boolean @default(true) // ativar alerta de deals parados
+  rottingDays        Int     @default(7) // dias sem atividade = alerta
+  currency           String  @default("BRL")
   winProbabilityAuto Boolean @default(true) // IA calcula probabilidade
 
   // Campos customizados específicos deste pipeline
@@ -588,15 +593,15 @@ model PipelineStage {
   color       String  @default("#7c5cfc")
 
   // Tipo da etapa
-  type        StageType @default(REGULAR)
+  type StageType @default(REGULAR)
 
   // Probabilidade e métricas
-  probability   Int     @default(0)  // 0-100%
+  probability    Int    @default(0) // 0-100%
   avgDaysInStage Float? // calculado automaticamente
 
   // Configuração de comportamento
-  rottingDays   Int?    // override do pipeline, null = herda
-  maxDeals      Int?    // limite de deals simultâneos nesta etapa
+  rottingDays Int? // override do pipeline, null = herda
+  maxDeals    Int? // limite de deals simultâneos nesta etapa
 
   // Automações da etapa — o que acontece ao entrar/sair/ficar parado
   onEnterActions   Json @default("[]") // ações ao entrar
@@ -605,19 +610,19 @@ model PipelineStage {
   requiredFields   Json @default("[]") // campos obrigatórios para sair
 
   // Integração com Super Agente
-  agentId      String?  // agente ativado quando deal entra nesta etapa
+  agentId      String? // agente ativado quando deal entra nesta etapa
   agentTrigger StageAgentTrigger @default(MANUAL)
-  agentGoal    String?  // instrução específica para o agente nesta etapa
+  agentGoal    String? // instrução específica para o agente nesta etapa
 
   // WON/LOST
   isWon  Boolean @default(false)
   isLost Boolean @default(false)
 
-  pipelineId_rel Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade, map: "stage_pipeline_fk")
-  agent          AIAgent? @relation(fields: [agentId], references: [id])
+  pipelineId_rel Pipeline             @relation(fields: [pipelineId], references: [id], onDelete: Cascade, map: "stage_pipeline_fk")
+  agent          AIAgent?             @relation(fields: [agentId], references: [id])
   deals          Deal[]
-  fromMovements  DealStageMovement[] @relation("FromStage")
-  toMovements    DealStageMovement[] @relation("ToStage")
+  fromMovements  DealStageMovement[]  @relation("FromStage")
+  toMovements    DealStageMovement[]  @relation("ToStage")
   automationLogs StageAutomationLog[]
 
   @@index([pipelineId, order])
@@ -629,16 +634,16 @@ model PipelineStage {
 // =============================================================================
 
 model Deal {
-  id         String  @id @default(cuid())
-  title      String
-  value      Decimal @default(0) @db.Decimal(15, 2)
-  currency   String  @default("BRL")
+  id       String  @id @default(cuid())
+  title    String
+  value    Decimal @default(0) @db.Decimal(15, 2)
+  currency String  @default("BRL")
 
   // Pipeline e etapa
   pipelineId     String
   stageId        String
   stageEnteredAt DateTime @default(now()) // quando entrou no stage atual
-  stageHistory   Json     @default("[]")  // histórico de movimentos
+  stageHistory   Json     @default("[]") // histórico de movimentos
 
   // Contato e responsável
   contactId String
@@ -647,8 +652,8 @@ model Deal {
   branchId  String?
 
   // Previsão
-  probability     Int       @default(0)   // 0-100, calculado por IA ou manual
-  aiProbability   Float?    // probabilidade calculada pela IA (separada)
+  probability     Int       @default(0) // 0-100, calculado por IA ou manual
+  aiProbability   Float? // probabilidade calculada pela IA (separada)
   expectedCloseAt DateTime?
   closedAt        DateTime?
   closedReason    String?
@@ -656,7 +661,7 @@ model Deal {
   // Status de saúde
   isRotting      Boolean  @default(false)
   lastActivityAt DateTime @default(now())
-  rottingDays    Int      @default(0)    // dias sem atividade
+  rottingDays    Int      @default(0) // dias sem atividade
 
   // Campos customizados
   customFields Json @default("{}")
@@ -674,19 +679,20 @@ model Deal {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  pipeline       Pipeline      @relation(fields: [pipelineId], references: [id])
-  stage          PipelineStage @relation(fields: [stageId], references: [id])
-  contact        Contact       @relation(fields: [contactId], references: [id])
-  owner          User          @relation("DealOwner", fields: [ownerId], references: [id])
-  org            Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  branch         Branch?       @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  activities     Activity[]
-  payments       Payment[]
-  automationLogs AutomationLog[]
+  pipeline            Pipeline             @relation(fields: [pipelineId], references: [id])
+  stage               PipelineStage        @relation(fields: [stageId], references: [id])
+  contact             Contact              @relation(fields: [contactId], references: [id])
+  owner               User                 @relation("DealOwner", fields: [ownerId], references: [id])
+  org                 Organization         @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  branch              Branch?              @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  activities          Activity[]
+  payments            Payment[]
+  automationLogs      AutomationLog[]
   stageAutomationLogs StageAutomationLog[]
-  stageMovements DealStageMovement[]
-  comments       Comment[]
-  documents      Document[]
+  stageMovements      DealStageMovement[]
+  comments            Comment[]
+  documents           Document[]
+  tagRelations        DealTag[]
 
   @@index([orgId, pipelineId, stageId])
   @@index([orgId, ownerId])
@@ -702,7 +708,7 @@ model Deal {
 // =============================================================================
 
 model DealStageMovement {
-  id    String @id @default(cuid())
+  id     String @id @default(cuid())
   dealId String
   orgId  String
 
@@ -713,14 +719,14 @@ model DealStageMovement {
 
   // Quem/o que moveu
   movedBy        MovedByType
-  userId         String?  // se movido por humano
-  agentId        String?  // se movido por agente
-  agentSessionId String?  // sessão do agente que moveu
+  userId         String? // se movido por humano
+  agentId        String? // se movido por agente
+  agentSessionId String? // sessão do agente que moveu
 
   // Contexto da movimentação
-  reason            String? // por que foi movido
-  dataCollected     Json?   // dados coletados antes de mover
-  triggerEvent      String? // evento que disparou (ex: "buying_signal_detected")
+  reason        String? // por que foi movido
+  dataCollected Json? // dados coletados antes de mover
+  triggerEvent  String? // evento que disparou (ex: "buying_signal_detected")
 
   // Tempo no stage anterior
   daysInPreviousStage Float?
@@ -782,12 +788,12 @@ model Conversation {
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
 
-  branchId      String?
+  branchId String?
 
-  contact    Contact      @relation(fields: [contactId], references: [id])
-  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  agent      User?        @relation("ConversationAgent", fields: [agentId], references: [id], onDelete: SetNull)
-  branch     Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  contact    Contact          @relation(fields: [contactId], references: [id])
+  org        Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  agent      User?            @relation("ConversationAgent", fields: [agentId], references: [id], onDelete: SetNull)
+  branch     Branch?          @relation(fields: [branchId], references: [id], onDelete: SetNull)
   messages   Message[]
   aiSessions AIAgentSession[]
 
@@ -834,13 +840,13 @@ model Message {
 // =============================================================================
 
 model MessageTemplate {
-  id       String @id @default(cuid())
+  id       String  @id @default(cuid())
   name     String
   category String
-  language String @default("pt_BR")
-  status   String @default("PENDING")
+  language String  @default("pt_BR")
+  status   String  @default("PENDING")
   header   Json?
-  body     String @db.Text
+  body     String  @db.Text
   footer   String?
   buttons  Json?
   orgId    String
@@ -920,16 +926,16 @@ model Automation {
 
   // Trigger
   triggerType   AutomationTriggerEnum @default(CONTACT_CREATED)
-  triggerConfig Json  @default("{}")
+  triggerConfig Json                  @default("{}")
 
   // Legacy fields kept for backward compat
-  trigger     Json    @default("{}")
-  conditions  Json    @default("[]")
-  actions     Json    @default("[]")
+  trigger    Json @default("{}")
+  conditions Json @default("[]")
+  actions    Json @default("[]")
 
   // Workflow graph nodes/edges
-  nodes       Json    @default("[]")
-  edges       Json    @default("[]")
+  nodes Json @default("[]")
+  edges Json @default("[]")
 
   // Statistics
   executionCount Int       @default(0)
@@ -948,19 +954,19 @@ model Automation {
 }
 
 model AutomationLog {
-  id               String              @id @default(cuid())
-  automationId     String
-  contactId        String?
-  dealId           String?
-  conversationId   String?
-  orgId            String
-  status           String              // success | failed | skipped | partial
-  triggerData      Json                @default("{}")
-  nodesExecuted    Json                @default("[]")
-  executedActions  Json                @default("[]")
-  error            String?
-  duration         Int?
-  createdAt        DateTime            @default(now())
+  id              String   @id @default(cuid())
+  automationId    String
+  contactId       String?
+  dealId          String?
+  conversationId  String?
+  orgId           String
+  status          String // success | failed | skipped | partial
+  triggerData     Json     @default("{}")
+  nodesExecuted   Json     @default("[]")
+  executedActions Json     @default("[]")
+  error           String?
+  duration        Int?
+  createdAt       DateTime @default(now())
 
   automation Automation   @relation(fields: [automationId], references: [id], onDelete: Cascade)
   contact    Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
@@ -980,11 +986,13 @@ model StageAutomationLog {
   orgId           String
   ruleId          String
   ruleName        String
-  trigger         String              // "enter" | "exit" | "rotting"
+  trigger         String // "enter" | "exit" | "rotting"
   status          AutomationLogStatus
   executedActions Json                @default("[]")
   error           String?
-  /** BullMQ-job-scoped key used to no-op on retries after a worker crash. */
+  /**
+   * BullMQ-job-scoped key used to no-op on retries after a worker crash.
+   */
   idempotencyKey  String?             @unique
   createdAt       DateTime            @default(now())
 
@@ -1054,9 +1062,9 @@ model AuditLog {
 
 model WhiteLabelDomain {
   id         String   @id @default(cuid())
-  domain     String   @unique  // ex: "crm.agenciaxyz.com.br"
+  domain     String   @unique // ex: "crm.agenciaxyz.com.br"
   isVerified Boolean  @default(false)
-  orgId      String   @unique  // uma org = um domínio customizado
+  orgId      String   @unique // uma org = um domínio customizado
   createdAt  DateTime @default(now())
 
   org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
@@ -1087,18 +1095,18 @@ model KnowledgeBase {
 }
 
 model KnowledgeDocument {
-  id             String                       @id @default(cuid())
-  title          String
-  content        String                       @db.Text
-  sourceUrl      String?
-  sourceType     KnowledgeDocumentSourceType
-  status         KnowledgeDocumentStatus      @default(PENDING)
-  chunkCount     Int                          @default(0)
-  metadata       Json                         @default("{}")
+  id              String                      @id @default(cuid())
+  title           String
+  content         String                      @db.Text
+  sourceUrl       String?
+  sourceType      KnowledgeDocumentSourceType
+  status          KnowledgeDocumentStatus     @default(PENDING)
+  chunkCount      Int                         @default(0)
+  metadata        Json                        @default("{}")
   knowledgeBaseId String
-  orgId          String
-  createdAt      DateTime                     @default(now())
-  updatedAt      DateTime                     @updatedAt
+  orgId           String
+  createdAt       DateTime                    @default(now())
+  updatedAt       DateTime                    @updatedAt
 
   knowledgeBase KnowledgeBase    @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
   chunks        KnowledgeChunk[]
@@ -1109,14 +1117,14 @@ model KnowledgeDocument {
 }
 
 model KnowledgeChunk {
-  id              String                  @id @default(cuid())
-  content         String                  @db.Text
+  id              String                       @id @default(cuid())
+  content         String                       @db.Text
   chunkIndex      Int
   embeddingVector Unsupported("vector(1536)")?
-  metadata        Json                    @default("{}")
+  metadata        Json                         @default("{}")
   documentId      String
   orgId           String
-  createdAt       DateTime                @default(now())
+  createdAt       DateTime                     @default(now())
 
   document KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
@@ -1143,15 +1151,15 @@ model AIAgent {
   model    String?
 
   // Configuração do super agente
-  systemPrompt    String  @db.Text
-  personality     Json    @default("{}")
-  goal            String  @db.Text
-  successCriteria Json    @default("{}")
+  systemPrompt    String @db.Text
+  personality     Json   @default("{}")
+  goal            String @db.Text
+  successCriteria Json   @default("{}")
 
   // Planejamento e fluxo
-  flowTemplate  Json?
-  decisionRules Json?
-  requiredDataPoints Json @default("[]")
+  flowTemplate       Json?
+  decisionRules      Json?
+  requiredDataPoints Json  @default("[]")
 
   // Configuração de comportamento
   maxTurnsBeforeHuman Int   @default(20)
@@ -1161,14 +1169,14 @@ model AIAgent {
 
   // Ferramentas e conhecimento
   knowledgeBaseIds String[]
-  enabledTools     Json @default("{}")
-  handoffRules     Json @default("{}")
+  enabledTools     Json     @default("{}")
+  handoffRules     Json     @default("{}")
 
   // Aprendizado
-  learningConfig        Json     @default("{}")
+  learningConfig        Json      @default("{}")
   learningCompletedAt   DateTime?
-  learnedFromCount      Int      @default(0)
-  minimumLearningSample Int      @default(30)
+  learnedFromCount      Int       @default(0)
+  minimumLearningSample Int       @default(30)
 
   orgId     String
   isActive  Boolean  @default(false)
@@ -1186,7 +1194,7 @@ model AIAgent {
 }
 
 model AIAgentSession {
-  id             String        @id @default(cuid())
+  id             String @id @default(cuid())
   agentId        String
   conversationId String
   orgId          String
@@ -1210,12 +1218,12 @@ model AIAgentSession {
   outcome      String?
   goalAchieved Boolean?
 
-  startedAt      DateTime @default(now())
-  lastActivityAt DateTime @default(now())
+  startedAt      DateTime  @default(now())
+  lastActivityAt DateTime  @default(now())
   endedAt        DateTime?
 
-  agent        AIAgent      @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  agent        AIAgent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  conversation Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   turns        AIAgentTurn[]
 
   @@index([agentId, status])
@@ -1227,21 +1235,29 @@ model AIAgentSession {
 model AIAgentTurn {
   id           String   @id @default(cuid())
   sessionId    String
-  role         String   // user | assistant | tool
+  role         String // user | assistant | tool
   content      String   @db.Text
   toolName     String?
   toolParams   Json?
   toolResult   String?  @db.Text
-  /** Combined token count. Kept for backwards compat with rows written
-   *  before the cost-tracking column split (May 2026). */
+  /**
+   * Combined token count. Kept for backwards compat with rows written
+   * before the cost-tracking column split (May 2026).
+   */
   tokensUsed   Int      @default(0)
   inputTokens  Int      @default(0)
   outputTokens Int      @default(0)
-  /** Provider + model that produced this turn (e.g. "anthropic:claude-sonnet-4"). */
+  /**
+   * Provider + model that produced this turn (e.g. "anthropic:claude-sonnet-4").
+   */
   model        String?
-  /** USD cost computed from token counts × provider pricing at turn time. */
+  /**
+   * USD cost computed from token counts × provider pricing at turn time.
+   */
   costUsd      Decimal  @default(0) @db.Decimal(12, 6)
-  /** Wall-clock milliseconds the LLM/tool call took. Null for the user turn. */
+  /**
+   * Wall-clock milliseconds the LLM/tool call took. Null for the user turn.
+   */
   durationMs   Int?
   createdAt    DateTime @default(now())
 
@@ -1283,7 +1299,7 @@ model AgentLearningJob {
   completedAt     DateTime?
   createdAt       DateTime  @default(now())
 
-  agent AIAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  agent AIAgent      @relation(fields: [agentId], references: [id], onDelete: Cascade)
   org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@index([agentId])
@@ -1296,15 +1312,15 @@ model AgentLearningJob {
 // =============================================================================
 
 model AIInsight {
-  id                     String        @id @default(cuid())
-  type                   AIInsightType
-  title                  String
-  content                String        @db.Text
-  confidence             Float
-  sourceConversationIds  String[]
-  metadata               Json          @default("{}")
-  orgId                  String
-  createdAt              DateTime      @default(now())
+  id                    String        @id @default(cuid())
+  type                  AIInsightType
+  title                 String
+  content               String        @db.Text
+  confidence            Float
+  sourceConversationIds String[]
+  metadata              Json          @default("{}")
+  orgId                 String
+  createdAt             DateTime      @default(now())
 
   org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
@@ -1341,9 +1357,9 @@ model AITrainingData {
 model OrgIntegration {
   id           String    @id @default(cuid())
   orgId        String
-  provider     String    // google_workspace | slack | notion | etc
-  accessToken  String    @db.Text   // criptografado com AES-256-GCM
-  refreshToken String?   @db.Text   // criptografado
+  provider     String // google_workspace | slack | notion | etc
+  accessToken  String    @db.Text // criptografado com AES-256-GCM
+  refreshToken String?   @db.Text // criptografado
   expiresAt    DateTime?
   scopes       String[]
   metadata     Json      @default("{}") // email da conta conectada, etc
@@ -1363,8 +1379,8 @@ model OrgIntegration {
 // =============================================================================
 
 model LeadScoringConfig {
-  id     String @id @default(cuid())
-  orgId  String @unique
+  id       String  @id @default(cuid())
+  orgId    String  @unique
   isActive Boolean @default(true)
 
   demographicRules Json @default("[]")
@@ -1389,8 +1405,8 @@ model LeadScoringConfig {
 // =============================================================================
 
 model Comment {
-  id         String  @id @default(cuid())
-  content    String  @db.Text
+  id         String   @id @default(cuid())
+  content    String   @db.Text
   mentions   String[]
   isResolved Boolean  @default(false)
   isInternal Boolean  @default(true)
@@ -1405,12 +1421,12 @@ model Comment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  author   User         @relation("CommentAuthor", fields: [authorId], references: [id])
-  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  deal     Deal?        @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  contact  Contact?     @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  replies  Comment[]    @relation("CommentReplies")
-  parent   Comment?     @relation("CommentReplies", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  author  User         @relation("CommentAuthor", fields: [authorId], references: [id])
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  deal    Deal?        @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  contact Contact?     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  replies Comment[]    @relation("CommentReplies")
+  parent  Comment?     @relation("CommentReplies", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([dealId])
   @@index([contactId])
@@ -1448,21 +1464,21 @@ model Notification {
 // =============================================================================
 
 model Document {
-  id          String         @id @default(cuid())
-  name        String
-  type        DocumentType
-  status      DocumentStatus @default(DRAFT)
+  id     String         @id @default(cuid())
+  name   String
+  type   DocumentType
+  status DocumentStatus @default(DRAFT)
 
-  fileUrl     String?
-  fileSize    Int?
-  mimeType    String?
-  version     Int            @default(1)
+  fileUrl  String?
+  fileSize Int?
+  mimeType String?
+  version  Int     @default(1)
 
-  templateId  String?
-  variables   Json           @default("{}")
+  templateId String?
+  variables  Json    @default("{}")
 
-  signers     Json           @default("[]")
-  signedAt    DateTime?
+  signers  Json      @default("[]")
+  signedAt DateTime?
 
   dealId      String?
   contactId   String?
@@ -1473,9 +1489,9 @@ model Document {
   updatedAt DateTime  @updatedAt
   expiresAt DateTime?
 
-  deal     Deal?        @relation(fields: [dealId], references: [id], onDelete: SetNull)
-  contact  Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
-  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  deal     Deal?             @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  contact  Contact?          @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  org      Organization      @relation(fields: [orgId], references: [id], onDelete: Cascade)
   versions DocumentVersion[]
 
   @@index([orgId, type])
@@ -1567,16 +1583,66 @@ model Goal {
 // =============================================================================
 
 model ZapierSubscription {
-  id         String   @id @default(cuid())
-  orgId      String
-  event      String
-  targetUrl  String
-  provider   String   @default("zapier") // zapier | make
-  isActive   Boolean  @default(true)
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  orgId     String
+  event     String
+  targetUrl String
+  provider  String   @default("zapier") // zapier | make
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
 
   org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@index([orgId, event])
   @@map("zapier_subscriptions")
+}
+
+// =============================================================================
+// TAGS (relational, with per-org colors)
+// =============================================================================
+
+model Tag {
+  id        String   @id @default(cuid())
+  name      String
+  color     String   @default("#7c5cfc") // hex "#RRGGBB"
+  orgId     String
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  contacts ContactTag[]
+  deals    DealTag[]
+
+  // Unique per organization. Case-insensitive enforcement is in the service
+  // (Prisma can't express case-insensitive uniques on PostgreSQL directly).
+  @@unique([orgId, name])
+  @@index([orgId])
+  @@map("tags")
+}
+
+model ContactTag {
+  contactId String
+  tagId     String
+  createdAt DateTime @default(now())
+
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([contactId, tagId])
+  @@index([tagId])
+  @@map("contact_tags")
+}
+
+model DealTag {
+  dealId    String
+  tagId     String
+  createdAt DateTime @default(now())
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([dealId, tagId])
+  @@index([tagId])
+  @@map("deal_tags")
 }

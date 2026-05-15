@@ -1,8 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { Search, Flame, Bot, X, Kanban, List, BarChart2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { TagAutocomplete, type TagOption } from "@/components/ui/tag-autocomplete";
+import { useTags } from "@/hooks/useTags";
 import { cn } from "@/lib/utils";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -14,6 +17,8 @@ export interface FilterState {
     isRotting: boolean;
     hasAgent: boolean;
     ownerId: string | null;
+    /** Selected tag ids — joined to a CSV when sent to the API. */
+    tagIds: string[];
     view: ViewMode;
 }
 
@@ -22,6 +27,7 @@ export const DEFAULT_FILTERS: FilterState = {
     isRotting: false,
     hasAgent: false,
     ownerId: null,
+    tagIds: [],
     view: "kanban",
 };
 
@@ -46,7 +52,14 @@ export function FilterBar({ filters, onFiltersChange }: FilterBarProps) {
     const set = <K extends keyof FilterState>(k: K, v: FilterState[K]) =>
         onFiltersChange({ ...filters, [k]: v });
 
-    const isAnyFilterActive = filters.search || filters.isRotting || filters.hasAgent || filters.ownerId;
+    const [tagSearch, setTagSearch] = useState("");
+    const { data: tagOptions = [] } = useTags({ search: tagSearch, limit: 50 });
+    const selectedTags: TagOption[] = filters.tagIds
+        .map((id) => tagOptions.find((t) => t.id === id))
+        .filter((t): t is TagOption => !!t);
+
+    const isAnyFilterActive = filters.search || filters.isRotting || filters.hasAgent ||
+        filters.ownerId || filters.tagIds.length > 0;
 
     return (
         <div className="flex flex-wrap items-center gap-2">
@@ -100,6 +113,17 @@ export function FilterBar({ filters, onFiltersChange }: FilterBarProps) {
                     />
                 )}
             </button>
+
+            {/* Tag filter */}
+            <div className="min-w-[180px]">
+                <TagAutocomplete
+                    value={selectedTags}
+                    options={tagOptions}
+                    onChange={(next) => set("tagIds", next.map((t) => t.id))}
+                    onSearchChange={setTagSearch}
+                    placeholder="Filtrar por tags..."
+                />
+            </div>
 
             {/* Clear all */}
             {isAnyFilterActive && (

@@ -7,6 +7,7 @@ import type {
     StageRequiredField,
     StageAutomationLogEntry,
 } from "@crm-base/shared";
+import type { Tag } from "@/hooks/useTags";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -82,6 +83,19 @@ export interface PipelineDeal {
         color: string;
         agentId: string | null;
     } | null;
+    tags?: Tag[];
+}
+
+function normalizeDeal<T extends { tagRelations?: Array<{ tag: Tag }>; tags?: Tag[] | unknown }>(deal: T): T & { tags: Tag[] } {
+    // The API returns `tagRelations: [{ tag: Tag }]` from the join. Flatten so
+    // callers always see a clean `tags: Tag[]` on the deal.
+    if (Array.isArray((deal as { tagRelations?: unknown }).tagRelations)) {
+        return {
+            ...deal,
+            tags: (deal.tagRelations as Array<{ tag: Tag }>).map((r) => r.tag),
+        };
+    }
+    return { ...deal, tags: Array.isArray(deal.tags) ? (deal.tags as Tag[]) : [] };
 }
 
 export interface PipelineSummary {
@@ -167,11 +181,13 @@ export function usePipelines() {
     });
 }
 
-export function usePipeline(id: string) {
+export function usePipeline(id: string, filters: { tags?: string } = {}) {
     return useQuery({
-        queryKey: ["pipelines", id, "kanban"],
+        queryKey: ["pipelines", id, "kanban", filters],
         queryFn: async () => {
-            const { data } = await api.get(`/pipeline/pipelines/${id}/kanban`);
+            const { data } = await api.get(`/pipeline/pipelines/${id}/kanban`, {
+                params: filters.tags ? { tags: filters.tags } : undefined,
+            });
             // API returns { pipeline, columns: [{stage, deals}] } — transform to Pipeline shape
             const result = data as {
                 pipeline: PipelineSummary & Record<string, unknown>;
@@ -180,7 +196,7 @@ export function usePipeline(id: string) {
             return {
                 ...result.pipeline,
                 stages: result.columns.map((c) => c.stage),
-                deals: result.columns.flatMap((c) => c.deals),
+                deals: result.columns.flatMap((c) => c.deals.map(normalizeDeal)),
             } as Pipeline;
         },
         enabled: !!id,
@@ -192,7 +208,7 @@ export function useDeal(dealId: string) {
         queryKey: ["deals", dealId],
         queryFn: async () => {
             const { data } = await api.get(`/pipeline/deals/${dealId}`);
-            return data as PipelineDeal & {
+            return normalizeDeal(data) as PipelineDeal & {
                 activities: DealActivity[];
                 stageMovements: DealMovement[];
             };
@@ -286,6 +302,7 @@ export function useCreateDeal() {
             ownerId?: string;
             expectedCloseAt?: string;
             customFields?: Record<string, unknown>;
+            tagIds?: string[];
         }) => {
             const { data } = await api.post("/pipeline/deals", payload);
             return data as PipelineDeal;
@@ -306,6 +323,7 @@ export function useUpdateDeal(dealId: string) {
             ownerId: string;
             expectedCloseAt: string;
             customFields: Record<string, unknown>;
+            tagIds: string[];
         }>) => {
             const { data } = await api.patch(`/pipeline/deals/${dealId}`, payload);
             return data as PipelineDeal;

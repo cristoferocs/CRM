@@ -28,6 +28,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
+import { TagAutocomplete, type TagOption } from "@/components/ui/tag-autocomplete";
+import { useTags, useCreateTag } from "@/hooks/useTags";
 import { api } from "@/lib/api";
 import { cn, formatCurrency, formatRelative, getInitials } from "@/lib/utils";
 import {
@@ -200,6 +202,23 @@ export function DealDrawer({ deal, open, onOpenChange, onOpenInbox }: DealDrawer
     const { data: sessions = [], isLoading: loadingSessions } = useDealAgentSessions(dealId);
     const updateDeal = useUpdateDeal(dealId);
 
+    // Tags state — initialized from the deal once it loads and kept in sync
+    // with optimistic updates.
+    const [tagSearch, setTagSearch] = useState("");
+    const { data: tagOptions = [] } = useTags({ search: tagSearch, limit: 50 });
+    const createTag = useCreateTag();
+    const dealTags: TagOption[] = ((fullDeal as { tags?: { id: string; name: string; color: string }[] } | undefined)?.tags
+        ?? (deal as { tags?: { id: string; name: string; color: string }[] } | undefined)?.tags
+        ?? []) as TagOption[];
+
+    const persistTags = async (next: TagOption[]) => {
+        try {
+            await updateDeal.mutateAsync({ tagIds: next.map((t) => t.id) });
+        } catch {
+            toast.error("Erro ao atualizar tags");
+        }
+    };
+
     const { data: conversations = [], isLoading: loadingConversations } = useQuery({
         queryKey: ["inbox", "conversations", deal?.contactId],
         queryFn: async () => {
@@ -369,6 +388,25 @@ export function DealDrawer({ deal, open, onOpenChange, onOpenInbox }: DealDrawer
                                             </div>
                                         </div>
                                     )}
+
+                                    {/* Tags */}
+                                    <div>
+                                        <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-t3">
+                                            Tags
+                                        </p>
+                                        <TagAutocomplete
+                                            value={dealTags}
+                                            options={tagOptions}
+                                            onChange={persistTags}
+                                            onSearchChange={setTagSearch}
+                                            onCreate={async (name) => {
+                                                const created = await createTag.mutateAsync({ name });
+                                                return { id: created.id, name: created.name, color: created.color };
+                                            }}
+                                            placeholder="Adicionar tag..."
+                                            loading={updateDeal.isPending}
+                                        />
+                                    </div>
 
                                     {/* Custom fields */}
                                     {displayDeal.customFields &&

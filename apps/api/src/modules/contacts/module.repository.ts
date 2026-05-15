@@ -2,7 +2,17 @@ import { prisma } from "../../lib/prisma.js";
 import type { Prisma } from "@prisma/client";
 import type { ContactFilters, CreateContactInput, UpdateContactInput } from "./module.schema.js";
 
-const contactSelect = {
+const tagSelect = {
+    id: true,
+    name: true,
+    color: true,
+    orgId: true,
+    createdBy: true,
+    createdAt: true,
+    updatedAt: true,
+} as const;
+
+const contactSelectInternal = {
     id: true,
     name: true,
     email: true,
@@ -20,7 +30,7 @@ const contactSelect = {
     adsetId: true,
     campaignId: true,
     pixelSessionId: true,
-    tags: true,
+    tagRelations: { include: { tag: { select: tagSelect } } },
     customFields: true,
     orgId: true,
     companyId: true,
@@ -30,19 +40,28 @@ const contactSelect = {
     updatedAt: true,
 } as const;
 
+type ContactRow = Prisma.ContactGetPayload<{ select: typeof contactSelectInternal }>;
+
+function toContactResponse(row: ContactRow) {
+    const { tagRelations, ...rest } = row;
+    return {
+        ...rest,
+        tags: tagRelations.map((r) => r.tag),
+    };
+}
+
 export class ContactsRepository {
-    async list(orgId: string, filters: ContactFilters) {
-        const { search, type, source, tags, assignedTo, dateFrom, dateTo, page, limit } = filters;
+    async list(orgId: string, filters: ContactFilters & { tagIds?: string[] }) {
+        const { search, type, source, assignedTo, dateFrom, dateTo, page, limit } = filters;
         const skip = (page - 1) * limit;
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const where: Prisma.ContactWhereInput = {
             orgId,
             isActive: true,
             ...(type ? { type } : {}),
             ...(source ? { source } : {}),
-            ...(tags
-                ? { tags: { hasSome: tags.split(",").map((t) => t.trim()).filter(Boolean) } }
+            ...(filters.tagIds && filters.tagIds.length > 0
+                ? { tagRelations: { some: { tagId: { in: filters.tagIds } } } }
                 : {}),
             ...(assignedTo
                 ? { deals: { some: { ownerId: assignedTo, isActive: true } } }
@@ -66,10 +85,10 @@ export class ContactsRepository {
                 : {}),
         };
 
-        const [data, total] = await Promise.all([
+        const [rows, total] = await Promise.all([
             prisma.contact.findMany({
                 where,
-                select: contactSelect,
+                select: contactSelectInternal,
                 skip,
                 take: limit,
                 orderBy: { createdAt: "desc" },
@@ -77,32 +96,35 @@ export class ContactsRepository {
             prisma.contact.count({ where }),
         ]);
 
-        return { data, total };
+        return { data: rows.map(toContactResponse), total };
     }
 
-    findById(id: string, orgId: string) {
-        return prisma.contact.findFirst({
+    async findById(id: string, orgId: string) {
+        const row = await prisma.contact.findFirst({
             where: { id, orgId, isActive: true },
-            select: contactSelect,
+            select: contactSelectInternal,
         });
+        return row ? toContactResponse(row) : null;
     }
 
-    findByPhone(phone: string, orgId: string) {
-        return prisma.contact.findFirst({
+    async findByPhone(phone: string, orgId: string) {
+        const row = await prisma.contact.findFirst({
             where: { phone, orgId, isActive: true },
-            select: contactSelect,
+            select: contactSelectInternal,
         });
+        return row ? toContactResponse(row) : null;
     }
 
-    findByEmail(email: string, orgId: string) {
-        return prisma.contact.findFirst({
+    async findByEmail(email: string, orgId: string) {
+        const row = await prisma.contact.findFirst({
             where: { email, orgId, isActive: true },
-            select: contactSelect,
+            select: contactSelectInternal,
         });
+        return row ? toContactResponse(row) : null;
     }
 
-    create(data: CreateContactInput & { orgId: string }) {
-        return prisma.contact.create({
+    async create(data: CreateContactInput & { orgId: string; tagIds?: string[] }) {
+        const row = await prisma.contact.create({
             data: {
                 name: data.name,
                 email: data.email ?? null,
@@ -125,42 +147,59 @@ export class ContactsRepository {
                 orgId: data.orgId,
                 companyId: data.companyId ?? null,
                 branchId: data.branchId ?? null,
+                ...(data.tagIds && data.tagIds.length > 0
+                    ? { tagRelations: { create: data.tagIds.map((tagId) => ({ tagId })) } }
+                    : {}),
             },
-            select: contactSelect,
+            select: contactSelectInternal,
         });
+        return toContactResponse(row);
     }
 
-    async update(id: string, orgId: string, data: UpdateContactInput) {
-        await prisma.contact.updateMany({
-            where: { id, orgId, isActive: true },
-            data: {
-                ...(data.name !== undefined ? { name: data.name } : {}),
-                ...(data.email !== undefined ? { email: data.email } : {}),
-                ...(data.phone !== undefined ? { phone: data.phone } : {}),
-                ...(data.document !== undefined ? { document: data.document } : {}),
-                ...(data.avatar !== undefined ? { avatar: data.avatar } : {}),
-                ...(data.type !== undefined ? { type: data.type as never } : {}),
-                ...(data.source !== undefined ? { source: data.source as never } : {}),
-                ...(data.utmSource !== undefined ? { utmSource: data.utmSource } : {}),
-                ...(data.utmMedium !== undefined ? { utmMedium: data.utmMedium } : {}),
-                ...(data.utmCampaign !== undefined ? { utmCampaign: data.utmCampaign } : {}),
-                ...(data.utmContent !== undefined ? { utmContent: data.utmContent } : {}),
-                ...(data.utmTerm !== undefined ? { utmTerm: data.utmTerm } : {}),
-                ...(data.adId !== undefined ? { adId: data.adId } : {}),
-                ...(data.adsetId !== undefined ? { adsetId: data.adsetId } : {}),
-                ...(data.campaignId !== undefined ? { campaignId: data.campaignId } : {}),
-                ...(data.pixelSessionId !== undefined ? { pixelSessionId: data.pixelSessionId } : {}),
-                ...(data.tags !== undefined ? { tags: data.tags } : {}),
-                ...(data.customFields !== undefined ? { customFields: data.customFields as never } : {}),
-                ...(data.companyId !== undefined ? { companyId: data.companyId } : {}),
-                ...(data.branchId !== undefined ? { branchId: data.branchId } : {}),
-            },
+    async update(id: string, orgId: string, data: UpdateContactInput & { tagIds?: string[] }) {
+        await prisma.$transaction(async (tx) => {
+            await tx.contact.updateMany({
+                where: { id, orgId, isActive: true },
+                data: {
+                    ...(data.name !== undefined ? { name: data.name } : {}),
+                    ...(data.email !== undefined ? { email: data.email } : {}),
+                    ...(data.phone !== undefined ? { phone: data.phone } : {}),
+                    ...(data.document !== undefined ? { document: data.document } : {}),
+                    ...(data.avatar !== undefined ? { avatar: data.avatar } : {}),
+                    ...(data.type !== undefined ? { type: data.type as never } : {}),
+                    ...(data.source !== undefined ? { source: data.source as never } : {}),
+                    ...(data.utmSource !== undefined ? { utmSource: data.utmSource } : {}),
+                    ...(data.utmMedium !== undefined ? { utmMedium: data.utmMedium } : {}),
+                    ...(data.utmCampaign !== undefined ? { utmCampaign: data.utmCampaign } : {}),
+                    ...(data.utmContent !== undefined ? { utmContent: data.utmContent } : {}),
+                    ...(data.utmTerm !== undefined ? { utmTerm: data.utmTerm } : {}),
+                    ...(data.adId !== undefined ? { adId: data.adId } : {}),
+                    ...(data.adsetId !== undefined ? { adsetId: data.adsetId } : {}),
+                    ...(data.campaignId !== undefined ? { campaignId: data.campaignId } : {}),
+                    ...(data.pixelSessionId !== undefined ? { pixelSessionId: data.pixelSessionId } : {}),
+                    ...(data.tags !== undefined ? { tags: data.tags } : {}),
+                    ...(data.customFields !== undefined ? { customFields: data.customFields as never } : {}),
+                    ...(data.companyId !== undefined ? { companyId: data.companyId } : {}),
+                    ...(data.branchId !== undefined ? { branchId: data.branchId } : {}),
+                },
+            });
+
+            if (data.tagIds !== undefined) {
+                await tx.contactTag.deleteMany({ where: { contactId: id } });
+                if (data.tagIds.length > 0) {
+                    await tx.contactTag.createMany({
+                        data: data.tagIds.map((tagId) => ({ contactId: id, tagId })),
+                        skipDuplicates: true,
+                    });
+                }
+            }
         });
 
-        return prisma.contact.findFirst({
+        const row = await prisma.contact.findFirst({
             where: { id, orgId },
-            select: contactSelect,
+            select: contactSelectInternal,
         });
+        return row ? toContactResponse(row) : null;
     }
 
     softDelete(id: string, orgId: string) {
@@ -170,7 +209,7 @@ export class ContactsRepository {
         });
     }
 
-    async bulkCreate(contacts: (CreateContactInput & { orgId: string })[]) {
+    async bulkCreate(contacts: (CreateContactInput & { orgId: string; tagIds?: string[] })[]) {
         const created = await prisma.$transaction(
             contacts.map((c) =>
                 prisma.contact.create({
@@ -196,6 +235,9 @@ export class ContactsRepository {
                         orgId: c.orgId,
                         companyId: c.companyId ?? null,
                         branchId: c.branchId ?? null,
+                        ...(c.tagIds && c.tagIds.length > 0
+                            ? { tagRelations: { create: c.tagIds.map((tagId) => ({ tagId })) } }
+                            : {}),
                     },
                     select: { id: true },
                 }),
@@ -205,36 +247,57 @@ export class ContactsRepository {
         return created;
     }
 
-    async addTag(id: string, orgId: string, tag: string) {
+    async addTagRelation(contactId: string, orgId: string, tagId: string) {
         const contact = await prisma.contact.findFirst({
-            where: { id, orgId, isActive: true },
-            select: { tags: true },
+            where: { id: contactId, orgId, isActive: true },
+            select: { id: true, tags: true, tagRelations: { select: { tag: { select: { name: true } } } } },
         });
-
         if (!contact) return null;
 
-        const tags = contact.tags.includes(tag) ? contact.tags : [...contact.tags, tag];
-
-        return prisma.contact.update({
-            where: { id },
-            data: { tags },
-            select: contactSelect,
+        await prisma.$transaction(async (tx) => {
+            await tx.contactTag.upsert({
+                where: { contactId_tagId: { contactId, tagId } },
+                create: { contactId, tagId },
+                update: {},
+            });
+            // Dual-write legacy String[] from the canonical join table so
+            // automation executors that read `contact.tags` keep seeing the
+            // current set during the soak period.
+            const tag = await tx.tag.findUnique({ where: { id: tagId }, select: { name: true } });
+            if (tag) {
+                const next = Array.from(new Set([...contact.tags, tag.name]));
+                await tx.contact.update({ where: { id: contactId }, data: { tags: next } });
+            }
         });
+
+        const row = await prisma.contact.findFirst({
+            where: { id: contactId, orgId },
+            select: contactSelectInternal,
+        });
+        return row ? toContactResponse(row) : null;
     }
 
-    async removeTag(id: string, orgId: string, tag: string) {
+    async removeTagRelation(contactId: string, orgId: string, tagId: string) {
         const contact = await prisma.contact.findFirst({
-            where: { id, orgId, isActive: true },
-            select: { tags: true },
+            where: { id: contactId, orgId, isActive: true },
+            select: { id: true, tags: true },
         });
-
         if (!contact) return null;
 
-        return prisma.contact.update({
-            where: { id },
-            data: { tags: contact.tags.filter((t) => t !== tag) },
-            select: contactSelect,
+        await prisma.$transaction(async (tx) => {
+            await tx.contactTag.deleteMany({ where: { contactId, tagId } });
+            const tag = await tx.tag.findUnique({ where: { id: tagId }, select: { name: true } });
+            if (tag) {
+                const next = contact.tags.filter((t) => t !== tag.name);
+                await tx.contact.update({ where: { id: contactId }, data: { tags: next } });
+            }
         });
+
+        const row = await prisma.contact.findFirst({
+            where: { id: contactId, orgId },
+            select: contactSelectInternal,
+        });
+        return row ? toContactResponse(row) : null;
     }
 
     async getTimeline(id: string, orgId: string) {

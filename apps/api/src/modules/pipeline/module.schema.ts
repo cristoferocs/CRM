@@ -129,6 +129,7 @@ export const CreateDealSchema = z.object({
     utmSource: z.string().max(200).optional(),
     utmCampaign: z.string().max(200).optional(),
     adId: z.string().max(200).optional(),
+    tagIds: z.array(z.string()).optional(),
 });
 
 export const UpdateDealSchema = z.object({
@@ -139,6 +140,7 @@ export const UpdateDealSchema = z.object({
     expectedCloseAt: z.string().datetime().nullable().optional(),
     probability: z.number().int().min(0).max(100).optional(),
     customFields: z.record(z.string(), z.unknown()).optional(),
+    tagIds: z.array(z.string()).optional(),
 });
 
 export const MoveDealSchema = z.object({
@@ -158,6 +160,11 @@ export const DealFiltersSchema = z.object({
     ownerId: z.string().optional(),
     contactId: z.string().optional(),
     isRotting: z.coerce.boolean().optional(),
+    /**
+     * Comma-separated list of either tag ids or tag names. The pipeline service
+     * resolves names against the Tag table and falls back to the legacy
+     * Contact.tags String[] for backwards compat.
+     */
     tags: z.string().optional(),
     valueMin: z.coerce.number().optional(),
     valueMax: z.coerce.number().optional(),

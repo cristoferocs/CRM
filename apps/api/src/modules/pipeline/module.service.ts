@@ -4,6 +4,7 @@ import { getPubSub } from "../../lib/pubsub.js";
 import { getIO } from "../../websocket/socket.js";
 import { queues } from "../../queue/queues.js";
 import { fireAutomation } from "../automations/automation-dispatcher.js";
+import { TagsService } from "../tags/module.service.js";
 import type {
     CreatePipelineInput,
     UpdatePipelineInput,
@@ -145,7 +146,27 @@ function unprocessable(msg: string): never {
 // ---------------------------------------------------------------------------
 
 export class PipelineService {
-    constructor(private readonly repo = new PipelineRepository()) { }
+    constructor(
+        private readonly repo = new PipelineRepository(),
+        private readonly tags = new TagsService(),
+    ) { }
+
+    private async resolveTagFilter(orgId: string, csv: string | undefined): Promise<string[] | undefined> {
+        if (!csv) return undefined;
+        const tokens = csv.split(",").map((t) => t.trim()).filter(Boolean);
+        if (tokens.length === 0) return undefined;
+        const ids = new Set<string>();
+        const names: string[] = [];
+        for (const tok of tokens) {
+            if (/^[a-z0-9]{20,}$/i.test(tok)) ids.add(tok);
+            else names.push(tok);
+        }
+        for (const name of names) {
+            const tag = await this.tags["repo"].findByName(name, orgId);
+            if (tag) ids.add(tag.id);
+        }
+        return Array.from(ids);
+    }
 
     // =========================================================================
     // PIPELINES
@@ -229,7 +250,8 @@ export class PipelineService {
         role: string,
     ) {
         const scopeFilters = await this.applyDealScopeToKanbanFilters(filters, orgId, userId, role);
-        const result = await this.repo.getPipelineKanban(pipelineId, orgId, scopeFilters);
+        const tagIds = await this.resolveTagFilter(orgId, scopeFilters.tags);
+        const result = await this.repo.getPipelineKanban(pipelineId, orgId, { ...scopeFilters, tagIds });
         if (!result) notFound("Pipeline");
         return result;
     }
@@ -390,7 +412,8 @@ export class PipelineService {
 
     async listDeals(orgId: string, filters: DealFilters, userId: string, role: string) {
         const scopeWhere = await this.buildDealScopeWhere(orgId, userId, role);
-        const { data, total } = await this.repo.listDeals(orgId, filters, scopeWhere);
+        const tagIds = await this.resolveTagFilter(orgId, filters.tags);
+        const { data, total } = await this.repo.listDeals(orgId, { ...filters, tagIds }, scopeWhere);
         return {
             data,
             total,
@@ -416,6 +439,11 @@ export class PipelineService {
         if (stage.pipelineId_rel.orgId !== orgId) forbidden();
         if (stage.pipelineId !== data.pipelineId) {
             unprocessable("O stage informado não pertence ao pipeline.");
+        }
+
+        // Validate tag ownership when provided
+        if (data.tagIds && data.tagIds.length > 0) {
+            await this.tags.resolveIds(data.tagIds, orgId);
         }
 
         const deal = await this.repo.createDeal({ ...data, orgId, ownerId }, stage.name);
@@ -448,6 +476,9 @@ export class PipelineService {
         const existing = await this.repo.findDealById(id, orgId);
         if (!existing) notFound("Deal");
         await this.assertDealAccess(existing, orgId, userId, role);
+        if (data.tagIds && data.tagIds.length > 0) {
+            await this.tags.resolveIds(data.tagIds, orgId);
+        }
         return this.repo.updateDeal(id, data, orgId);
     }
 

@@ -24,7 +24,10 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { ContactSheet } from "@/components/modules/contacts/contact-sheet";
+import { TagAutocomplete, type TagOption } from "@/components/ui/tag-autocomplete";
+import { TagChip } from "@/components/ui/tag-chip";
 import { useContacts } from "@/hooks/useContacts";
+import { useTags } from "@/hooks/useTags";
 import { getInitials, formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
@@ -88,6 +91,9 @@ export default function ContactsPage() {
     const [statusFilter, setStatusFilter] = useState<string>("");
     const [sourceFilter, setSourceFilter] = useState<string>("");
     const [channelFilter, setChannelFilter] = useState<string>("");
+    const [tagFilters, setTagFilters] = useState<TagOption[]>([]);
+    const [tagSearch, setTagSearch] = useState("");
+    const { data: tagOptions = [] } = useTags({ search: tagSearch, limit: 50 });
     const [showFilters, setShowFilters] = useState(false);
     const [page, setPage] = useState(1);
 
@@ -103,6 +109,7 @@ export default function ContactsPage() {
         search: debouncedSearch || undefined,
         status: statusFilter || undefined,
         source: sourceFilter || undefined,
+        tags: tagFilters.length > 0 ? tagFilters.map((t) => t.id).join(",") : undefined,
         page,
         limit: 20,
     });
@@ -110,14 +117,15 @@ export default function ContactsPage() {
     // Reset page on filter change
     useEffect(() => {
         setPage(1);
-    }, [debouncedSearch, statusFilter, sourceFilter, channelFilter]);
+    }, [debouncedSearch, statusFilter, sourceFilter, channelFilter, tagFilters]);
 
-    const hasFilters = !!statusFilter || !!sourceFilter || !!channelFilter;
+    const hasFilters = !!statusFilter || !!sourceFilter || !!channelFilter || tagFilters.length > 0;
 
     const clearFilters = useCallback(() => {
         setStatusFilter("");
         setSourceFilter("");
         setChannelFilter("");
+        setTagFilters([]);
     }, []);
 
     const handleCsvImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -241,6 +249,16 @@ export default function ContactsPage() {
                             value={sourceFilter}
                             onChange={(e) => setSourceFilter(e.target.value)}
                         />
+
+                        <div className="min-w-[200px]">
+                            <TagAutocomplete
+                                value={tagFilters}
+                                options={tagOptions}
+                                onChange={setTagFilters}
+                                onSearchChange={setTagSearch}
+                                placeholder="Tags..."
+                            />
+                        </div>
                     </div>
                 )}
             </div>
@@ -337,9 +355,7 @@ export default function ContactsPage() {
                                         <TableCell>
                                             <div className="flex flex-wrap gap-1">
                                                 {contact.tags?.slice(0, 2).map((tag) => (
-                                                    <Badge key={tag} variant="muted">
-                                                        {tag}
-                                                    </Badge>
+                                                    <TagChip key={tag.id} name={tag.name} color={tag.color} compact />
                                                 ))}
                                                 {(contact.tags?.length ?? 0) > 2 && (
                                                     <Badge variant="muted">+{contact.tags!.length - 2}</Badge>
