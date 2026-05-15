@@ -171,19 +171,29 @@ export default function PipelinePage() {
 
     // ── Data ───────────────────────────────────────────────────────────────────
     const { data: pipelines = [], isLoading: loadingPipelines } = usePipelines();
-    const activePipelineId = selectedId || pipelines[0]?.id || "";
+    // If the persisted `selectedId` no longer exists in the user's pipelines
+    // (e.g. it was deleted, or belongs to a different org after re-login),
+    // we MUST fall back to `pipelines[0]` — otherwise the kanban API returns
+    // 404 and the page is stuck on "Selecione um pipeline para visualizar".
+    const isSelectedIdValid =
+        !!selectedId && pipelines.some((p) => p.id === selectedId);
+    const activePipelineId = isSelectedIdValid
+        ? selectedId
+        : pipelines[0]?.id || "";
     // ── UI state ───────────────────────────────────────────────────────────────
     const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
-    const { data: pipeline, isLoading: loadingPipeline } = usePipeline(activePipelineId, {
+    const { data: pipeline, isPending: pipelinePending, error: pipelineError } = usePipeline(activePipelineId, {
         tags: filters.tagIds.length > 0 ? filters.tagIds.join(",") : undefined,
     });
 
+    // Keep localStorage in sync: auto-select the first available pipeline
+    // whenever the stored value is missing or stale.
     useEffect(() => {
-        if (!selectedId && pipelines.length > 0 && pipelines[0]) {
+        if (pipelines.length > 0 && pipelines[0] && !isSelectedIdValid) {
             handleSelectPipeline(pipelines[0].id);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [pipelines]);
+    }, [pipelines, isSelectedIdValid]);
 
     const moveDeal = useMoveDeal();
 
@@ -311,7 +321,10 @@ export default function PipelinePage() {
     };
 
     // ── Loading skeleton ───────────────────────────────────────────────────────
-    if (loadingPipelines || (!pipeline && loadingPipeline)) {
+    // Use `isPending` (TanStack Query v5) instead of `isLoading` so the skeleton
+    // covers ALL non-success states (fetching, between retries, transition from
+    // disabled→enabled) — not just the narrow `isFetching && isPending` window.
+    if (loadingPipelines || (!!activePipelineId && pipelinePending)) {
         return (
             <div className="flex h-full flex-col gap-4 p-6">
                 <div className="flex items-center gap-3">
@@ -372,9 +385,20 @@ export default function PipelinePage() {
 
             {/* ── Content ─────────────────────────────────────────────────────── */}
             <div className="min-h-0 flex-1 overflow-auto p-6">
-                {!pipeline ? (
+                {!activePipelineId ? (
                     <div className="flex h-full items-center justify-center text-sm text-t3">
-                        Selecione um pipeline para visualizar.
+                        {pipelines.length === 0
+                            ? "Nenhum pipeline cadastrado. Crie um em Configurações → Pipelines."
+                            : "Selecione um pipeline para visualizar."}
+                    </div>
+                ) : pipelineError ? (
+                    <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-t3">
+                        <span>Erro ao carregar o pipeline.</span>
+                        <span className="text-xs text-t4">{(pipelineError as Error).message}</span>
+                    </div>
+                ) : !pipeline ? (
+                    <div className="flex h-full items-center justify-center text-sm text-t3">
+                        Carregando pipeline…
                     </div>
                 ) : filters.view === "kanban" ? (
                     <KanbanBoard

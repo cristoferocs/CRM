@@ -5,7 +5,7 @@ import { Search, Flame, Bot, X, Kanban, List, BarChart2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { TagAutocomplete, type TagOption } from "@/components/ui/tag-autocomplete";
-import { useTags } from "@/hooks/useTags";
+import { useTags, type Tag } from "@/hooks/useTags";
 import { cn } from "@/lib/utils";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -56,7 +56,7 @@ export function FilterBar({ filters, onFiltersChange }: FilterBarProps) {
     const { data: tagOptions = [] } = useTags({ search: tagSearch, limit: 50 });
     const selectedTags: TagOption[] = filters.tagIds
         .map((id) => tagOptions.find((t) => t.id === id))
-        .filter((t): t is TagOption => !!t);
+        .filter((t): t is Tag => !!t);
 
     const isAnyFilterActive = filters.search || filters.isRotting || filters.hasAgent ||
         filters.ownerId || filters.tagIds.length > 0;
