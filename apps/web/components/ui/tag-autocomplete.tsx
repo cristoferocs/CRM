@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Loader2, Plus, Check } from "lucide-react";
+import { ChevronDown, Loader2, Plus, Check } from "lucide-react";
 import {
     Command,
     CommandEmpty,
@@ -10,7 +10,7 @@ import {
     CommandItem,
     CommandList,
 } from "@/components/ui/command";
-import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { TagChip } from "@/components/ui/tag-chip";
 import { tagColor } from "@/lib/tag-color";
 import { cn } from "@/lib/utils";
@@ -36,11 +36,12 @@ export interface TagAutocompleteProps {
     emptyMessage?: string;
     disabled?: boolean;
     loading?: boolean;
-    /** If false, the trigger renders as filter chip (no inline input). */
-    allowInput?: boolean;
     /** Hard cap on number of selected tags. */
     maxTags?: number;
+    /** Extra classes for the trigger button. Width should be set here. */
     className?: string;
+    /** Width of the dropdown panel (defaults to matching trigger). */
+    contentWidth?: number | string;
 }
 
 export function TagAutocomplete({
@@ -53,14 +54,13 @@ export function TagAutocomplete({
     emptyMessage = "Nenhuma tag encontrada",
     disabled,
     loading,
-    allowInput = true,
     maxTags,
     className,
+    contentWidth,
 }: TagAutocompleteProps) {
     const [open, setOpen] = React.useState(false);
     const [query, setQuery] = React.useState("");
     const [creating, setCreating] = React.useState(false);
-    const inputRef = React.useRef<HTMLInputElement>(null);
 
     const selectedIds = React.useMemo(() => new Set(value.map((t) => t.id)), [value]);
     const trimmed = query.trim();
@@ -69,7 +69,11 @@ export function TagAutocomplete({
           value.some((o) => o.name.toLowerCase() === trimmed.toLowerCase())
         : true;
 
-    const canCreate = !!onCreate && !!trimmed && !hasExactMatch && !creating &&
+    const canCreate =
+        !!onCreate &&
+        !!trimmed &&
+        !hasExactMatch &&
+        !creating &&
         (!maxTags || value.length < maxTags);
 
     const toggle = (tag: TagOption) => {
@@ -86,7 +90,6 @@ export function TagAutocomplete({
         try {
             setCreating(true);
             const tag = await onCreate(trimmed);
-            // Add only if it wasn't already chosen via a race condition.
             if (!selectedIds.has(tag.id)) {
                 onChange([...value, tag]);
             }
@@ -102,65 +105,96 @@ export function TagAutocomplete({
         onSearchChange?.(next);
     };
 
+    // Reset the search when the popover closes so reopening starts fresh.
+    React.useEffect(() => {
+        if (!open) {
+            setQuery("");
+            onSearchChange?.("");
+        }
+        // onSearchChange is intentionally omitted — we only want to react to open changes.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open]);
+
+    const triggerLabel =
+        value.length === 0 ? placeholder : `${value.length} tag${value.length === 1 ? "" : "s"}`;
+
     return (
         <Popover open={open && !disabled} onOpenChange={setOpen}>
-            <PopoverAnchor asChild>
-                <div
+            <PopoverTrigger asChild>
+                <button
+                    type="button"
                     role="combobox"
                     aria-expanded={open}
-                    onClick={() => {
-                        if (disabled) return;
-                        setOpen(true);
-                        requestAnimationFrame(() => inputRef.current?.focus());
-                    }}
+                    aria-haspopup="listbox"
+                    disabled={disabled}
                     className={cn(
-                        "flex min-h-9 w-full cursor-text flex-wrap items-center gap-1 rounded-[10px] border border-rim bg-surface-3 px-2 py-1 text-[13px] transition-colors",
-                        "focus-within:border-violet/40",
+                        "group inline-flex h-9 min-w-[160px] max-w-full items-center gap-1 rounded-[10px] border border-rim bg-surface-3 px-2 py-1 text-left text-[13px] transition-colors",
+                        "hover:border-rim2 data-[state=open]:border-violet/40",
                         disabled && "cursor-not-allowed opacity-60",
                         className,
                     )}
                 >
-                    {value.map((tag) => (
-                        <TagChip
-                            key={tag.id}
-                            name={tag.name}
-                            color={tag.color}
-                            onRemove={disabled ? undefined : () => toggle(tag)}
-                        />
-                    ))}
-                    {allowInput && (
-                        <input
-                            ref={inputRef}
-                            value={query}
-                            disabled={disabled}
-                            onChange={(e) => handleSearchChange(e.target.value)}
-                            onFocus={() => setOpen(true)}
-                            onKeyDown={(e) => {
-                                if (e.key === "Backspace" && query === "" && value.length > 0) {
-                                    e.preventDefault();
-                                    onChange(value.slice(0, -1));
-                                } else if (e.key === "Enter") {
-                                    e.preventDefault();
-                                    if (canCreate) {
-                                        void handleCreate();
-                                    }
-                                }
-                            }}
-                            placeholder={value.length === 0 ? placeholder : ""}
-                            className="min-w-[80px] flex-1 bg-transparent text-t1 placeholder:text-t3 outline-none"
-                            aria-label="Buscar tag"
-                        />
-                    )}
-                    {loading && <Loader2 className="h-3.5 w-3.5 animate-spin text-t3" />}
-                </div>
-            </PopoverAnchor>
+                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1 overflow-hidden">
+                        {value.length === 0 ? (
+                            <span className="truncate text-t3">{placeholder}</span>
+                        ) : (
+                            value.slice(0, 3).map((tag) => (
+                                <TagChip
+                                    key={tag.id}
+                                    name={tag.name}
+                                    color={tag.color}
+                                    compact
+                                />
+                            ))
+                        )}
+                        {value.length > 3 && (
+                            <span className="font-mono text-[10px] text-t3">
+                                +{value.length - 3}
+                            </span>
+                        )}
+                    </div>
+                    {loading && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-t3" />}
+                    <ChevronDown
+                        className={cn(
+                            "h-3.5 w-3.5 shrink-0 text-t3 transition-transform group-data-[state=open]:rotate-180",
+                        )}
+                    />
+                    <span className="sr-only">{triggerLabel}</span>
+                </button>
+            </PopoverTrigger>
 
-            <PopoverContent className="w-[--radix-popover-trigger-width] min-w-[260px] p-0" align="start">
+            <PopoverContent
+                align="start"
+                side="bottom"
+                sideOffset={4}
+                collisionPadding={8}
+                className="p-0"
+                style={
+                    contentWidth
+                        ? { width: typeof contentWidth === "number" ? `${contentWidth}px` : contentWidth }
+                        : { width: "var(--radix-popover-trigger-width)", minWidth: 240 }
+                }
+                onOpenAutoFocus={(event) => {
+                    // Let Radix focus the first focusable item (the CommandInput
+                    // inside the popover) without our trigger fighting for focus.
+                    event.preventDefault();
+                    const input = (event.currentTarget as HTMLElement).querySelector<HTMLInputElement>(
+                        "[cmdk-input]",
+                    );
+                    input?.focus();
+                }}
+            >
                 <Command shouldFilter={false}>
                     <CommandInput
                         value={query}
                         onValueChange={handleSearchChange}
-                        placeholder="Buscar tags..."
+                        placeholder="Buscar tag..."
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter" && canCreate) {
+                                e.preventDefault();
+                                void handleCreate();
+                            }
+                        }}
                     />
                     <CommandList>
                         <CommandEmpty>
@@ -186,9 +220,10 @@ export function TagAutocomplete({
                         {options.length > 0 && (
                             <CommandGroup heading="Tags">
                                 {options
-                                    .filter((opt) =>
-                                        !trimmed ||
-                                        opt.name.toLowerCase().includes(trimmed.toLowerCase()),
+                                    .filter(
+                                        (opt) =>
+                                            !trimmed ||
+                                            opt.name.toLowerCase().includes(trimmed.toLowerCase()),
                                     )
                                     .map((opt) => {
                                         const selected = selectedIds.has(opt.id);
@@ -209,6 +244,21 @@ export function TagAutocomplete({
                                             </CommandItem>
                                         );
                                     })}
+                            </CommandGroup>
+                        )}
+                        {value.length > 0 && (
+                            <CommandGroup heading="Selecionadas">
+                                {value.map((tag) => (
+                                    <CommandItem
+                                        key={`sel-${tag.id}`}
+                                        value={`__sel__${tag.name}`}
+                                        onSelect={() => toggle(tag)}
+                                        className="flex items-center justify-between gap-2"
+                                    >
+                                        <TagChip name={tag.name} color={tag.color} compact />
+                                        <Check className="h-3.5 w-3.5 text-t2" />
+                                    </CommandItem>
+                                ))}
                             </CommandGroup>
                         )}
                     </CommandList>

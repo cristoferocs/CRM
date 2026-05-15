@@ -405,6 +405,7 @@ export function DealDrawer({ deal, open, onOpenChange, onOpenInbox }: DealDrawer
                                             }}
                                             placeholder="Adicionar tag..."
                                             loading={updateDeal.isPending}
+                                            className="w-full"
                                         />
                                     </div>
 

@@ -250,15 +250,15 @@ export default function ContactsPage() {
                             onChange={(e) => setSourceFilter(e.target.value)}
                         />
 
-                        <div className="min-w-[200px]">
-                            <TagAutocomplete
-                                value={tagFilters}
-                                options={tagOptions}
-                                onChange={setTagFilters}
-                                onSearchChange={setTagSearch}
-                                placeholder="Tags..."
-                            />
-                        </div>
+                        <TagAutocomplete
+                            value={tagFilters}
+                            options={tagOptions}
+                            onChange={setTagFilters}
+                            onSearchChange={setTagSearch}
+                            placeholder="Tags"
+                            className="h-8 w-[200px] text-xs"
+                            contentWidth={280}
+                        />
                     </div>
                 )}
             </div>

@@ -115,15 +115,15 @@ export function FilterBar({ filters, onFiltersChange }: FilterBarProps) {
             </button>
 
             {/* Tag filter */}
-            <div className="min-w-[180px]">
-                <TagAutocomplete
-                    value={selectedTags}
-                    options={tagOptions}
-                    onChange={(next) => set("tagIds", next.map((t) => t.id))}
-                    onSearchChange={setTagSearch}
-                    placeholder="Filtrar por tags..."
-                />
-            </div>
+            <TagAutocomplete
+                value={selectedTags}
+                options={tagOptions}
+                onChange={(next) => set("tagIds", next.map((t) => t.id))}
+                onSearchChange={setTagSearch}
+                placeholder="Tags"
+                className="h-8 w-[180px] text-xs"
+                contentWidth={260}
+            />
 
             {/* Clear all */}
             {isAnyFilterActive && (
