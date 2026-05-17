@@ -115,6 +115,13 @@ app.setErrorHandler((error: import("fastify").FastifyError, request, reply) => {
     statusCode,
     error: error.name ?? "Error",
     message: statusCode >= 500 ? "Internal Server Error" : error.message,
+    // Forward optional structured fields used by clients to discriminate
+    // login-throttle / captcha responses, etc. Only present when the route
+    // explicitly attaches them to the thrown error.
+    ...((error as { code?: string }).code ? { code: (error as { code?: string }).code } : {}),
+    ...((error as { retryAfter?: number }).retryAfter !== undefined
+      ? { retryAfter: (error as { retryAfter?: number }).retryAfter }
+      : {}),
     reqId: request.id,
   });
 });

@@ -6,11 +6,20 @@ import { z } from "zod";
 
 export const LoginSchema = z.object({
     firebaseToken: z.string().min(1),
+    captchaId: z.string().min(1).optional(),
+    captchaAnswer: z.union([z.string(), z.number()]).optional(),
 });
 
 export const DevLoginSchema = z.object({
     email: z.string().email(),
     password: z.string().min(1),
+    captchaId: z.string().min(1).optional(),
+    captchaAnswer: z.union([z.string(), z.number()]).optional(),
+});
+
+export const ChallengeResponseSchema = z.object({
+    challengeId: z.string(),
+    question: z.string(),
 });
 
 export const RefreshSchema = z.object({

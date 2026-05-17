@@ -8,6 +8,7 @@ import {
     RefreshSchema,
     RefreshResponseSchema,
     DevLoginSchema,
+    ChallengeResponseSchema,
     type LoginInput,
     type RefreshInput,
     type DevLoginInput,
@@ -19,6 +20,12 @@ import {
     revokeJti,
     revokeUserFamily,
 } from "../../lib/jwt-revocation.js";
+import {
+    getThrottleStatus,
+    registerFailure,
+    resetAttempts,
+} from "../../lib/login-throttle.js";
+import { issueChallenge, consumeChallenge } from "../../lib/captcha.js";
 
 interface IssuedTokens {
     accessToken: string;
@@ -67,6 +74,79 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         return { accessToken, refreshToken, accessJti, refreshJti };
     }
 
+    /**
+     * Block the request when the (ip, subject) bucket is locked, and demand a
+     * solved captcha challenge once the soft threshold has been crossed.
+     * Throws a structured error consumed by the front-end via err.code.
+     */
+    async function enforceThrottle(
+        ip: string,
+        subject: string,
+        captchaId: string | undefined,
+        captchaAnswer: string | number | undefined,
+    ) {
+        const status = await getThrottleStatus(ip, subject);
+        if (status.locked) {
+            throw Object.assign(
+                new Error(
+                    `Muitas tentativas. Tente novamente em ${Math.ceil(status.lockedFor / 60)} minutos.`,
+                ),
+                { statusCode: 429, code: "LOGIN_LOCKED", retryAfter: status.lockedFor },
+            );
+        }
+        if (status.captchaRequired) {
+            const ok = await consumeChallenge(captchaId, captchaAnswer);
+            if (!ok) {
+                throw Object.assign(
+                    new Error("Verificação de segurança necessária."),
+                    { statusCode: 428, code: "CAPTCHA_REQUIRED" },
+                );
+            }
+        }
+    }
+
+    // GET /auth/challenge — issue a single-use human-verification challenge.
+    fastify.get(
+        "/challenge",
+        {
+            config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+            schema: { response: { 200: ChallengeResponseSchema } },
+        },
+        async () => issueChallenge(),
+    );
+
+    // GET /auth/throttle-status?subject=<email> — lets the client know
+    // whether captcha will be required / how long the IP is locked.
+    fastify.get(
+        "/throttle-status",
+        {
+            config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+            schema: {
+                querystring: { type: "object", properties: { subject: { type: "string" } }, required: ["subject"] },
+                response: {
+                    200: {
+                        type: "object",
+                        properties: {
+                            captchaRequired: { type: "boolean" },
+                            locked: { type: "boolean" },
+                            lockedFor: { type: "number" },
+                        },
+                        required: ["captchaRequired", "locked", "lockedFor"],
+                    },
+                },
+            },
+        },
+        async (request) => {
+            const subject = String((request.query as { subject?: string }).subject ?? "");
+            const status = await getThrottleStatus(request.ip, subject);
+            return {
+                captchaRequired: status.captchaRequired,
+                locked: status.locked,
+                lockedFor: status.lockedFor,
+            };
+        },
+    );
+
     // POST /auth/login
     fastify.post(
         "/login",
@@ -78,22 +158,28 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
             },
         },
         async (request, reply) => {
-            const { firebaseToken } = request.body as LoginInput;
+            const { firebaseToken, captchaId, captchaAnswer } = request.body as LoginInput;
 
+            // Decode first (cheaply) to know which email bucket to throttle.
             const decoded = await service.verifyFirebaseToken(firebaseToken);
-            const user = await service.loginOrRegister(decoded.uid, decoded.email ?? "");
+            const subject = decoded.email ?? decoded.uid;
 
-            const tokens = issueTokens(user);
-            setAuthCookies(reply, tokens);
+            await enforceThrottle(request.ip, subject, captchaId, captchaAnswer);
 
-            // Return tokens in body too so mobile / API clients (which can't use
-            // HttpOnly cookies) keep working. Browser clients should ignore the
-            // body fields and rely on the cookie.
-            return reply.send({
-                accessToken: tokens.accessToken,
-                refreshToken: tokens.refreshToken,
-                user,
-            });
+            try {
+                const user = await service.loginOrRegister(decoded.uid, decoded.email ?? "");
+                await resetAttempts(request.ip, subject);
+                const tokens = issueTokens(user);
+                setAuthCookies(reply, tokens);
+                return reply.send({
+                    accessToken: tokens.accessToken,
+                    refreshToken: tokens.refreshToken,
+                    user,
+                });
+            } catch (err) {
+                await registerFailure(request.ip, subject);
+                throw err;
+            }
         },
     );
 
@@ -111,18 +197,25 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
                 },
             },
             async (request, reply) => {
-                const { email, password } = request.body as DevLoginInput;
+                const { email, password, captchaId, captchaAnswer } = request.body as DevLoginInput;
                 request.log.info({ email, ip: request.ip }, "dev-login attempt");
-                const user = await service.devLogin(email, password);
 
-                const tokens = issueTokens(user);
-                setAuthCookies(reply, tokens);
+                await enforceThrottle(request.ip, email, captchaId, captchaAnswer);
 
-                return reply.send({
-                    accessToken: tokens.accessToken,
-                    refreshToken: tokens.refreshToken,
-                    user,
-                });
+                try {
+                    const user = await service.devLogin(email, password);
+                    await resetAttempts(request.ip, email);
+                    const tokens = issueTokens(user);
+                    setAuthCookies(reply, tokens);
+                    return reply.send({
+                        accessToken: tokens.accessToken,
+                        refreshToken: tokens.refreshToken,
+                        user,
+                    });
+                } catch (err) {
+                    await registerFailure(request.ip, email);
+                    throw err;
+                }
             },
         );
     }

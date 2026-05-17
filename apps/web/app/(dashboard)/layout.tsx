@@ -26,6 +26,7 @@ import {
     Trophy,
     FileText,
     Plug,
+    ShieldCheck,
 } from "lucide-react";
 import { useWhiteLabelStore } from "@/stores/white-label.store";
 import { useUIStore } from "@/stores/ui.store";
@@ -236,7 +237,10 @@ function NavItem({
 function UserCard({ collapsed }: { collapsed: boolean }) {
     const user = useAuthStore((s) => s.user);
     const clearAuth = useAuthStore((s) => s.clearAuth);
-    const { theme, setTheme } = useUIStore();
+    const { theme, setTheme, adminMode, toggleAdminMode } = useUIStore();
+
+    const canUseAdminMode =
+        user?.role === "SUPER_ADMIN" || user?.role === "ADMIN";
 
     return (
         <div className={cn("border-t border-[var(--rim)] p-4", collapsed && "p-2")}>
@@ -287,6 +291,19 @@ function UserCard({ collapsed }: { collapsed: boolean }) {
                             Configurações
                         </Link>
                     </DropdownMenuItem>
+                    {canUseAdminMode && (
+                        <DropdownMenuItem onClick={toggleAdminMode}>
+                            <ShieldCheck
+                                className={cn(
+                                    "h-4 w-4",
+                                    adminMode && "text-violet",
+                                )}
+                            />
+                            {adminMode
+                                ? "Sair do modo administrativo"
+                                : "Entrar no modo administrativo"}
+                        </DropdownMenuItem>
+                    )}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                         className="text-rose focus:text-rose"

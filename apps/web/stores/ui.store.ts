@@ -13,12 +13,15 @@ interface Notification {
 interface UIState {
     sidebarOpen: boolean;
     theme: "dark" | "light" | "system";
+    adminMode: boolean;
     notifications: Notification[];
     unreadCount: number;
 
     setSidebarOpen: (open: boolean) => void;
     toggleSidebar: () => void;
     setTheme: (theme: "dark" | "light" | "system") => void;
+    setAdminMode: (on: boolean) => void;
+    toggleAdminMode: () => void;
     addNotification: (notif: Omit<Notification, "id" | "read" | "createdAt">) => void;
     markNotificationRead: (id: string) => void;
     markAllRead: () => void;
@@ -30,6 +33,7 @@ export const useUIStore = create<UIState>()(
         (set, get) => ({
             sidebarOpen: true,
             theme: "dark",
+            adminMode: false,
             notifications: [],
             unreadCount: 0,
 
@@ -37,6 +41,9 @@ export const useUIStore = create<UIState>()(
             toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
 
             setTheme: (theme) => set({ theme }),
+
+            setAdminMode: (adminMode) => set({ adminMode }),
+            toggleAdminMode: () => set((s) => ({ adminMode: !s.adminMode })),
 
             addNotification: (notif) => {
                 const notification: Notification = {
@@ -76,6 +83,7 @@ export const useUIStore = create<UIState>()(
             partialize: (state) => ({
                 sidebarOpen: state.sidebarOpen,
                 theme: state.theme,
+                adminMode: state.adminMode,
             }),
         },
     ),

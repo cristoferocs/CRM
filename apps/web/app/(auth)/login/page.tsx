@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import axios from "axios";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +21,39 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3333";
+
+interface ApiErrorBody {
+    message?: string;
+    code?: string;
+    retryAfter?: number;
+}
+
+function extractApiError(err: unknown): ApiErrorBody & { fallback: string } {
+    if (axios.isAxiosError(err)) {
+        const body = (err.response?.data ?? {}) as ApiErrorBody;
+        return {
+            message: body.message,
+            code: body.code,
+            retryAfter: body.retryAfter,
+            fallback: body.message ?? err.message ?? "Erro ao fazer login",
+        };
+    }
+    if (err instanceof Error) return { fallback: err.message };
+    return { fallback: "Erro ao fazer login" };
+}
+
+function formatRetryAfter(seconds: number | undefined): string {
+    if (!seconds || seconds <= 0) return "alguns minutos";
+    if (seconds >= 60) return `${Math.ceil(seconds / 60)} minutos`;
+    return `${seconds} segundos`;
+}
+
+interface Challenge {
+    challengeId: string;
+    question: string;
+}
+
 export default function LoginPage() {
     const router = useRouter();
     const { settings } = useWhiteLabelStore();
@@ -27,17 +61,13 @@ export default function LoginPage() {
     const { isAuthenticated } = useAuthStore();
 
     // Redirect away only if the persisted state says we're logged in AND the
-    // HttpOnly cookie still validates against /auth/me. We probe the API with
-    // `credentials: "include"` — no JWT ever touches client JS now.
+    // HttpOnly cookie still validates against /auth/me.
     useEffect(() => {
         if (!isAuthenticated) return;
         let cancelled = false;
         (async () => {
             try {
-                const res = await fetch(
-                    `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3333"}/auth/me`,
-                    { credentials: "include" },
-                );
+                const res = await fetch(`${API_BASE}/auth/me`, { credentials: "include" });
                 if (cancelled) return;
                 if (res.ok) {
                     router.replace("/");
@@ -54,33 +84,140 @@ export default function LoginPage() {
     }, [isAuthenticated, router]);
 
     const [error, setError] = useState<string | null>(null);
+    const [challenge, setChallenge] = useState<Challenge | null>(null);
+    const [captchaAnswer, setCaptchaAnswer] = useState("");
+    const [lockedUntil, setLockedUntil] = useState<number | null>(null);
+    const [now, setNow] = useState(() => Date.now());
+
+    // Live countdown for the lockout banner.
+    useEffect(() => {
+        if (!lockedUntil) return;
+        const t = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(t);
+    }, [lockedUntil]);
+
+    const lockSecondsLeft =
+        lockedUntil != null ? Math.max(0, Math.ceil((lockedUntil - now) / 1000)) : 0;
+    const isLocked = lockSecondsLeft > 0;
+
+    useEffect(() => {
+        if (lockedUntil != null && lockSecondsLeft === 0) {
+            setLockedUntil(null);
+            setError(null);
+        }
+    }, [lockedUntil, lockSecondsLeft]);
 
     const {
         register,
         handleSubmit,
         formState: { errors, isSubmitting },
+        getValues,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } = useForm<FormValues>({ resolver: zodResolver(schema as any) });
 
+    const fetchChallenge = useCallback(async () => {
+        const { data } = await axios.get<Challenge>(`${API_BASE}/auth/challenge`, {
+            withCredentials: true,
+        });
+        setChallenge(data);
+        setCaptchaAnswer("");
+    }, []);
+
+    // After the user types an email, ask the server whether captcha is already
+    // required for that subject (in case they reopened the page mid-throttle).
+    const refreshThrottleStatus = useCallback(
+        async (email: string) => {
+            if (!email) return;
+            try {
+                const { data } = await axios.get<{
+                    captchaRequired: boolean;
+                    locked: boolean;
+                    lockedFor: number;
+                }>(`${API_BASE}/auth/throttle-status`, {
+                    params: { subject: email },
+                    withCredentials: true,
+                });
+                if (data.locked) {
+                    setLockedUntil(Date.now() + data.lockedFor * 1000);
+                    setError(
+                        `Acesso temporariamente bloqueado por excesso de tentativas. ` +
+                        `Tente novamente em ${formatRetryAfter(data.lockedFor)}.`,
+                    );
+                } else if (data.captchaRequired && !challenge) {
+                    await fetchChallenge();
+                }
+            } catch {
+                // Non-fatal — endpoint is informational.
+            }
+        },
+        [challenge, fetchChallenge],
+    );
+
+    const handleApiError = useCallback(
+        async (err: unknown) => {
+            const parsed = extractApiError(err);
+            if (parsed.code === "LOGIN_LOCKED") {
+                setLockedUntil(Date.now() + (parsed.retryAfter ?? 0) * 1000);
+                setChallenge(null);
+                setError(
+                    `Acesso temporariamente bloqueado por excesso de tentativas. ` +
+                    `Tente novamente em ${formatRetryAfter(parsed.retryAfter)}.`,
+                );
+                return;
+            }
+            if (parsed.code === "CAPTCHA_REQUIRED") {
+                await fetchChallenge();
+                setError("Por favor, confirme que você é humano resolvendo o desafio abaixo.");
+                return;
+            }
+            // Generic credential / network error: if we already had a challenge,
+            // burn it (single-use) and fetch a fresh one in case the next
+            // attempt still needs one.
+            if (challenge) {
+                await fetchChallenge().catch(() => undefined);
+            }
+            setError(parsed.fallback);
+        },
+        [challenge, fetchChallenge],
+    );
+
     const onSubmit = async (data: FormValues) => {
+        if (isLocked) return;
         setError(null);
         try {
-            await loginWithEmail.mutateAsync(data);
+            await loginWithEmail.mutateAsync({
+                email: data.email,
+                password: data.password,
+                captchaId: challenge?.challengeId,
+                captchaAnswer: challenge ? captchaAnswer : undefined,
+            });
+            setChallenge(null);
+            setCaptchaAnswer("");
             router.replace("/");
         } catch (err: unknown) {
-            setError(err instanceof Error ? err.message : "Erro ao fazer login");
+            await handleApiError(err);
         }
     };
 
     const handleGoogle = async () => {
+        if (isLocked) return;
         setError(null);
         try {
-            await loginWithGoogle.mutateAsync();
+            await loginWithGoogle.mutateAsync({
+                captchaId: challenge?.challengeId,
+                captchaAnswer: challenge ? captchaAnswer : undefined,
+            });
+            setChallenge(null);
+            setCaptchaAnswer("");
             router.replace("/");
         } catch (err: unknown) {
-            setError(err instanceof Error ? err.message : "Erro ao fazer login com Google");
+            await handleApiError(err);
         }
     };
+
+    // Form-wide busy state — covers RHF submission AND the mutation network call.
+    const busy = isSubmitting || loginWithEmail.isPending || loginWithGoogle.isPending;
+    const disableAll = busy || isLocked;
 
     return (
         <div className="animate-fade-in">
@@ -103,12 +240,11 @@ export default function LoginPage() {
             <div className="rounded-[20px] border border-[var(--rim)] bg-surface p-6">
                 {!isDevMode && (
                     <>
-                        {/* Google OAuth */}
                         <Button
                             variant="outline"
                             className="w-full gap-2.5"
                             onClick={handleGoogle}
-                            disabled={loginWithGoogle.isPending}
+                            disabled={disableAll}
                             type="button"
                         >
                             {loginWithGoogle.isPending ? (
@@ -133,71 +269,102 @@ export default function LoginPage() {
                 )}
 
                 {isDevMode && (
-                    <div className="mb-4 space-y-2">
-                        <div className="rounded-[10px] border border-amber/30 bg-amber/[0.06] px-3 py-2 text-[11px] text-amber">
-                            Modo desenvolvimento — use as credenciais do administrador padrão.
-                        </div>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            className="w-full gap-2 border-amber/30 text-amber hover:bg-amber/[0.06]"
-                            onClick={async () => {
-                                const email = process.env.NEXT_PUBLIC_DEV_ADMIN_EMAIL ?? "";
-                                const password = process.env.NEXT_PUBLIC_DEV_ADMIN_PASSWORD ?? "";
-                                setError(null);
-                                try {
-                                    await loginWithEmail.mutateAsync({ email, password });
-                                    router.replace("/");
-                                } catch (err: unknown) {
-                                    setError(err instanceof Error ? err.message : "Erro ao fazer login");
-                                }
-                            }}
-                            disabled={loginWithEmail.isPending}
-                        >
-                            {loginWithEmail.isPending ? <Spinner size="sm" /> : "⚡ Entrar como Super Admin"}
-                        </Button>
+                    <div className="mb-4 rounded-[10px] border border-amber/30 bg-amber/[0.06] px-3 py-2 text-[11px] text-amber">
+                        Modo desenvolvimento — use as credenciais do administrador padrão.
                     </div>
                 )}
 
                 {/* Email / password form */}
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
-                    <div className="space-y-1.5">
-                        <Label htmlFor="email">E-mail</Label>
-                        <Input
-                            id="email"
-                            type="email"
-                            placeholder="seu@email.com"
-                            autoComplete="email"
-                            {...register("email")}
-                        />
-                        {errors.email && (
-                            <p className="text-xs text-rose">{errors.email.message}</p>
-                        )}
-                    </div>
-
-                    <div className="space-y-1.5">
-                        <Label htmlFor="password">Senha</Label>
-                        <Input
-                            id="password"
-                            type="password"
-                            placeholder="••••••••"
-                            autoComplete="current-password"
-                            {...register("password")}
-                        />
-                        {errors.password && (
-                            <p className="text-xs text-rose">{errors.password.message}</p>
-                        )}
-                    </div>
-
-                    {error && (
-                        <div className="rounded-[8px] border border-rose/20 bg-rose/[0.08] px-3 py-2.5 text-sm text-rose">
-                            {error}
+                    <fieldset disabled={disableAll} className="space-y-4 disabled:opacity-70">
+                        <div className="space-y-1.5">
+                            <Label htmlFor="email">E-mail</Label>
+                            <Input
+                                id="email"
+                                type="email"
+                                placeholder="seu@email.com"
+                                autoComplete="email"
+                                aria-busy={busy}
+                                {...register("email", {
+                                    onBlur: (e) => {
+                                        const v = (e.target as HTMLInputElement).value;
+                                        if (v) void refreshThrottleStatus(v);
+                                    },
+                                })}
+                            />
+                            {errors.email && (
+                                <p className="text-xs text-rose">{errors.email.message}</p>
+                            )}
                         </div>
-                    )}
 
-                    <Button type="submit" className="w-full" disabled={isSubmitting}>
-                        {isSubmitting ? <Spinner size="sm" /> : "Entrar"}
-                    </Button>
+                        <div className="space-y-1.5">
+                            <Label htmlFor="password">Senha</Label>
+                            <Input
+                                id="password"
+                                type="password"
+                                placeholder="••••••••"
+                                autoComplete="current-password"
+                                aria-busy={busy}
+                                {...register("password")}
+                            />
+                            {errors.password && (
+                                <p className="text-xs text-rose">{errors.password.message}</p>
+                            )}
+                        </div>
+
+                        {challenge && (
+                            <div className="space-y-1.5 rounded-[10px] border border-cyan/30 bg-cyan/[0.06] p-3">
+                                <Label htmlFor="captcha" className="text-cyan">
+                                    Verificação de segurança
+                                </Label>
+                                <p className="text-xs text-t2">{challenge.question}</p>
+                                <Input
+                                    id="captcha"
+                                    type="text"
+                                    inputMode="numeric"
+                                    autoComplete="off"
+                                    placeholder="Sua resposta"
+                                    value={captchaAnswer}
+                                    onChange={(e) => setCaptchaAnswer(e.target.value)}
+                                    required
+                                />
+                            </div>
+                        )}
+
+                        {error && (
+                            <div
+                                role="alert"
+                                className="rounded-[8px] border border-rose/20 bg-rose/[0.08] px-3 py-2.5 text-sm text-rose"
+                            >
+                                {error}
+                                {isLocked && (
+                                    <div className="mt-1 font-mono text-[11px] opacity-80">
+                                        Desbloqueio em {formatRetryAfter(lockSecondsLeft)}.
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        <Button
+                            type="submit"
+                            className="w-full"
+                            disabled={
+                                disableAll ||
+                                (challenge !== null && captchaAnswer.trim() === "") ||
+                                (isDevMode && !getValues("email"))
+                            }
+                        >
+                            {busy ? (
+                                <span className="flex items-center gap-2">
+                                    <Spinner size="sm" /> Entrando...
+                                </span>
+                            ) : isLocked ? (
+                                "Bloqueado temporariamente"
+                            ) : (
+                                "Entrar"
+                            )}
+                        </Button>
+                    </fieldset>
                 </form>
             </div>
 

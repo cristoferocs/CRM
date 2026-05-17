@@ -51,12 +51,21 @@ export function useAuth() {
         mutationFn: async ({
             email,
             password,
+            captchaId,
+            captchaAnswer,
         }: {
             email: string;
             password: string;
+            captchaId?: string;
+            captchaAnswer?: string;
         }) => {
             if (USE_DEV_LOGIN) {
-                const { data } = await api.post("/auth/dev-login", { email, password });
+                const { data } = await api.post("/auth/dev-login", {
+                    email,
+                    password,
+                    captchaId,
+                    captchaAnswer,
+                });
                 return data as { user: Parameters<typeof setAuth>[0] };
             }
             const credential = await signInWithEmailAndPassword(
@@ -65,7 +74,11 @@ export function useAuth() {
                 password,
             );
             const firebaseToken = await credential.user.getIdToken();
-            const { data } = await api.post("/auth/login", { firebaseToken });
+            const { data } = await api.post("/auth/login", {
+                firebaseToken,
+                captchaId,
+                captchaAnswer,
+            });
             return data as { user: Parameters<typeof setAuth>[0] };
         },
         onSuccess: ({ user }) => {
@@ -76,7 +89,9 @@ export function useAuth() {
 
     // ── Login with Google ────────────────────────────────────────────────────
     const loginWithGoogle = useMutation({
-        mutationFn: async () => {
+        mutationFn: async (
+            args?: { captchaId?: string; captchaAnswer?: string },
+        ) => {
             if (USE_DEV_LOGIN) {
                 throw new Error(
                     "Login com Google indisponível em modo de desenvolvimento. " +
@@ -85,7 +100,11 @@ export function useAuth() {
             }
             const result = await signInWithPopup(firebaseAuth, googleProvider);
             const firebaseToken = await result.user.getIdToken();
-            const { data } = await api.post("/auth/login", { firebaseToken });
+            const { data } = await api.post("/auth/login", {
+                firebaseToken,
+                captchaId: args?.captchaId,
+                captchaAnswer: args?.captchaAnswer,
+            });
             return data as { user: Parameters<typeof setAuth>[0] };
         },
         onSuccess: ({ user }) => {
