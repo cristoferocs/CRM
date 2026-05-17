@@ -1,6 +1,13 @@
 import { z } from "zod";
 
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+const HEX_COLOR_INPUT = /^#?[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?$/;
+
+function normalizeHexColor(value: string): string {
+    const raw = value.trim().replace(/^#/, "");
+    const expanded = raw.length === 3 ? raw.split("").map((ch) => `${ch}${ch}`).join("") : raw;
+    return `#${expanded.toLowerCase()}`;
+}
 
 // ---------------------------------------------------------------------------
 // Requests
@@ -12,12 +19,22 @@ export const CreateTagSchema = z.object({
         .min(1, "Nome obrigatório")
         .max(50, "Máximo 50 caracteres")
         .transform((s) => s.trim()),
-    color: z.string().regex(HEX_COLOR, "Cor deve estar no formato #RRGGBB").default("#7c5cfc"),
+    color: z
+        .string()
+        .default("#7c5cfc")
+        .transform((s) => s.trim())
+        .refine((value) => HEX_COLOR_INPUT.test(value), "Cor deve estar no formato #RRGGBB")
+        .transform((value) => normalizeHexColor(value)),
 });
 
 export const UpdateTagSchema = z.object({
     name: z.string().min(1).max(50).transform((s) => s.trim()).optional(),
-    color: z.string().regex(HEX_COLOR).optional(),
+    color: z
+        .string()
+        .transform((s) => s.trim())
+        .refine((value) => HEX_COLOR_INPUT.test(value), "Cor deve estar no formato #RRGGBB")
+        .transform((value) => normalizeHexColor(value))
+        .optional(),
 });
 
 export const TagFiltersSchema = z.object({

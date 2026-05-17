@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Save, Zap, Settings2, ExternalLink, CheckCircle2 } from "lucide-react";
+import { Save, Zap, Settings2, ExternalLink, CheckCircle2, MessageCircle, Instagram, Facebook } from "lucide-react";
 import { toast } from "sonner";
 
 export default function IntegrationsPage() {
@@ -18,7 +18,7 @@ export default function IntegrationsPage() {
 
     const telegramMutation = useMutation({
         mutationFn: () => api.post("/integrations/telegram/set-webhook", {
-            token: telegram.botToken, url: telegram.webhookUrl,
+            token: telegram.botToken, webhookUrl: telegram.webhookUrl,
         }),
         onSuccess: () => toast.success("Webhook do Telegram configurado!"),
         onError: () => toast.error("Erro ao configurar Telegram."),
@@ -35,7 +35,7 @@ export default function IntegrationsPage() {
 
     const testZapierMutation = useMutation({
         mutationFn: () => api.post("/integrations/zapier/trigger", {
-            event: "test", data: { message: "Test from CRM", timestamp: new Date().toISOString() },
+            event: "test", payload: { message: "Test from CRM", timestamp: new Date().toISOString() },
         }),
         onSuccess: () => toast.success("Evento enviado ao Zapier!"),
         onError: () => toast.error("Erro ao acionar Zapier."),
@@ -43,7 +43,7 @@ export default function IntegrationsPage() {
 
     const testMakeMutation = useMutation({
         mutationFn: () => api.post("/integrations/make/trigger", {
-            hookUrl: make.hookUrl, data: { message: "Test from CRM", timestamp: new Date().toISOString() },
+            webhookUrl: make.hookUrl, payload: { message: "Test from CRM", timestamp: new Date().toISOString() },
         }),
         onSuccess: () => toast.success("Cenário Make.com acionado!"),
         onError: () => toast.error("Erro ao acionar Make.com."),
@@ -57,6 +57,102 @@ export default function IntegrationsPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-6">
+                {/* WhatsApp (Evolution API) */}
+                <Card>
+                    <CardHeader>
+                        <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400">
+                                <MessageCircle className="h-5 w-5" />
+                            </div>
+                            <div>
+                                <CardTitle className="text-sm">WhatsApp (Evolution)</CardTitle>
+                                <CardDescription>Canal já preparado no backend</CardDescription>
+                            </div>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-3 text-xs text-t3">
+                        <div className="rounded-lg border border-[var(--rim)] bg-surface2 p-3">
+                            <p className="font-medium text-t2 mb-1">Webhook de entrada</p>
+                            <p className="font-mono break-all">POST /inbox/webhooks/evolution</p>
+                        </div>
+                        <p>
+                            Essa integração processa mensagens no Inbox usando o canal <span className="font-mono">WHATSAPP</span>.
+                        </p>
+                    </CardContent>
+                </Card>
+
+                {/* WhatsApp Official (Meta) */}
+                <Card>
+                    <CardHeader>
+                        <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400">
+                                <MessageCircle className="h-5 w-5" />
+                            </div>
+                            <div>
+                                <CardTitle className="text-sm">WhatsApp Official (Meta)</CardTitle>
+                                <CardDescription>Webhook oficial via Meta Cloud API</CardDescription>
+                            </div>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-3 text-xs text-t3">
+                        <div className="rounded-lg border border-[var(--rim)] bg-surface2 p-3">
+                            <p className="font-medium text-t2 mb-1">Webhook de entrada</p>
+                            <p className="font-mono break-all">POST /inbox/webhooks/meta</p>
+                        </div>
+                        <p>
+                            Eventos são tratados no Inbox com o canal <span className="font-mono">WHATSAPP_OFFICIAL</span>.
+                        </p>
+                    </CardContent>
+                </Card>
+
+                {/* Instagram */}
+                <Card>
+                    <CardHeader>
+                        <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-pink-500/10 text-pink-400">
+                                <Instagram className="h-5 w-5" />
+                            </div>
+                            <div>
+                                <CardTitle className="text-sm">Instagram DM</CardTitle>
+                                <CardDescription>Canal pronto via webhook Meta</CardDescription>
+                            </div>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-3 text-xs text-t3">
+                        <div className="rounded-lg border border-[var(--rim)] bg-surface2 p-3">
+                            <p className="font-medium text-t2 mb-1">Webhook de entrada</p>
+                            <p className="font-mono break-all">POST /inbox/webhooks/meta</p>
+                        </div>
+                        <p>
+                            Mensagens do Instagram são processadas como canal <span className="font-mono">INSTAGRAM</span>.
+                        </p>
+                    </CardContent>
+                </Card>
+
+                {/* Facebook Messenger */}
+                <Card>
+                    <CardHeader>
+                        <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/10 text-blue-400">
+                                <Facebook className="h-5 w-5" />
+                            </div>
+                            <div>
+                                <CardTitle className="text-sm">Facebook Messenger</CardTitle>
+                                <CardDescription>Canal pronto via webhook Meta</CardDescription>
+                            </div>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-3 text-xs text-t3">
+                        <div className="rounded-lg border border-[var(--rim)] bg-surface2 p-3">
+                            <p className="font-medium text-t2 mb-1">Webhook de entrada</p>
+                            <p className="font-mono break-all">POST /inbox/webhooks/meta</p>
+                        </div>
+                        <p>
+                            Mensagens do Messenger são tratadas como canal <span className="font-mono">FACEBOOK</span>.
+                        </p>
+                    </CardContent>
+                </Card>
+
                 {/* Telegram */}
                 <Card>
                     <CardHeader>

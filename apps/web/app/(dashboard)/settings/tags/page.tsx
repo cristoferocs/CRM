@@ -39,6 +39,16 @@ import {
 } from "@/hooks/useTags";
 import { usePermissions } from "@/hooks/usePermissions";
 
+const HEX_COLOR_INPUT = /^#?[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?$/;
+
+function normalizeHexColor(value: string): string | null {
+    const clean = value.trim();
+    if (!HEX_COLOR_INPUT.test(clean)) return null;
+    const raw = clean.replace(/^#/, "");
+    const expanded = raw.length === 3 ? raw.split("").map((ch) => `${ch}${ch}`).join("") : raw;
+    return `#${expanded.toLowerCase()}`;
+}
+
 export default function TagsSettingsPage() {
     const [search, setSearch] = useState("");
     const [createOpen, setCreateOpen] = useState(false);
@@ -158,8 +168,11 @@ function TagRow({
     };
 
     const changeColor = async (color: string) => {
+        const normalized = normalizeHexColor(color);
+        if (!normalized || normalized === tag.color.toLowerCase()) return;
+
         try {
-            await update.mutateAsync({ id: tag.id, color });
+            await update.mutateAsync({ id: tag.id, color: normalized });
         } catch {
             toast.error("Erro ao atualizar cor");
         }
