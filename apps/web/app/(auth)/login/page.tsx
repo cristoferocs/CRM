@@ -111,7 +111,6 @@ export default function LoginPage() {
         register,
         handleSubmit,
         formState: { errors, isSubmitting },
-        getValues,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } = useForm<FormValues>({ resolver: zodResolver(schema as any) });
 
@@ -350,8 +349,7 @@ export default function LoginPage() {
                             className="w-full"
                             disabled={
                                 disableAll ||
-                                (challenge !== null && captchaAnswer.trim() === "") ||
-                                (isDevMode && !getValues("email"))
+                                (challenge !== null && captchaAnswer.trim() === "")
                             }
                         >
                             {busy ? (
