@@ -252,10 +252,11 @@ export function ContactSheet({ open, onOpenChange, contact }: ContactSheetProps)
                                 const created = await createTag.mutateAsync({ name });
                                 return { id: created.id, name: created.name, color: created.color };
                             }}
-                            placeholder="Digite para buscar ou criar..."
+                            placeholder="Selecionar ou criar tags..."
+                            className="w-full"
                         />
                         <p className="text-[11px] text-t3">
-                            Digite para buscar uma tag existente ou criar uma nova.
+                            Clique para buscar uma tag existente ou criar uma nova.
                         </p>
                     </div>
                 </form>
